@@ -3,11 +3,15 @@ import type { BotMetadata } from "../contract";
 
 export function thread(id: string, updatedAt: number, overrides: Partial<PluginSidebarThread> = {}): PluginSidebarThread {
   return {
+    displayTitle: overrides.title ?? overrides.titleFallback ?? `Conversation ${id}`,
+    href: `/projects/${overrides.projectId ?? "project"}/threads/${id}`,
+    lifecycleOwnerThreadId: null, sourceThreadId: null, status: "idle", runtimeStatus: "idle", queuedWork: "none",
+    pinnedAt: null, pinSortKey: null, archivedAt: null, isHidden: false,
     id, projectId: "project", title: `Conversation ${id}`, titleFallback: null, parentThreadId: null, sectionId: null,
     originKind: null, originPluginId: null, providerId: "pi", hasPendingInteraction: false,
     activity: { workflows: 0, backgroundAgents: 0, backgroundCommands: 0, planMode: 0, goals: 0 },
     indicator: "none", indicatorLabel: null, isUnread: false, isPinned: false, isArchived: false,
-    environment: { id: "env-existing", name: null, branchName: "feature", providerId: null, workspaceDisplayKind: "managed-worktree" },
+    environment: { id: "env-existing", name: null, branchName: "feature", providerId: null, path: "/workspace", isWorktree: true, workspaceDisplayKind: "managed-worktree" },
     host: { id: "host", name: "Local" }, createdAt: updatedAt, updatedAt, lastReadAt: updatedAt, latestAttentionAt: updatedAt,
     ...overrides,
   };

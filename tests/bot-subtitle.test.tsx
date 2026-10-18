@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it } from "vitest";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
+import { renderSlot } from "./sidebar-host";
 import { bot, personalProjectId, thread } from "./fixtures";
 
 const app = await loadPluginApp(() => import("../app"));
@@ -9,7 +10,7 @@ afterEach(cleanup);
 
 it("keeps the role and owned projects in the bot subtitle through folding and ownership updates", async () => {
   let owners = [{ botId: bot.id, projectId: "owned" }, { botId: bot.id, projectId: "second" }, { botId: "other", projectId: "member" }];
-  const slot = renderSlot(app.threadLists[0]!, { activeThreadId: null, activeProjectId: "member", isCompactViewport: false, onNavigate() {}, searchQuery: "", Original: () => null }, {
+  const slot = renderSlot(app.threadLists[0]!, { activeThreadId: null, activeProjectId: "member", isCompactViewport: false, onNavigate() {}, searchQuery: "" }, {
     sidebarThreads: { projects: [], threads: [thread("main", 100, { projectId: "member", title: "Thread title must not replace role" })] },
     rpc: { bots_list: () => ({ bots: [{ ...bot, role: "Project assistant", linkedProjectIds: ["owned", "second", "member"] }], personalProjectId, hosts: [], sections: [], warnings: [],
       projects: [{ id: "owned", name: "Atlas" }, { id: "second", name: "Beacon" }, { id: "member", name: "Member only" }],
@@ -29,5 +30,5 @@ it("keeps the role and owned projects in the bot subtitle through folding and ow
   owners = [];
   await slot.behavior.emitRealtime("project-bots-changed", {});
   await waitFor(() => expect(subtitle.textContent).toBe("Project assistant"));
-  expect(slot.inspection.sidebarActionCalls).toEqual([]);
+  expect(slot.inspection.navigateCalls).toEqual([]);
 });

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it } from "vitest";
 import { act, cleanup, waitFor } from "@testing-library/react";
-import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
+import { renderSlot } from "./sidebar-host";
 import { bot, personalProjectId } from "./fixtures";
 const app = await loadPluginApp(() => import("../app"));
 afterEach(cleanup);
@@ -9,7 +10,7 @@ it("refreshes after reconnect and ignores an older response arriving last", asyn
   const result = (name: string) => ({ bots: [{ ...bot, name }], hosts: [], sections: [], projects: [], threadBindings: [], warnings: [], personalProjectId });
   let calls = 0;
   let resolveOld!: (value: ReturnType<typeof result>) => void;
-  const slot = renderSlot(app.threadLists[0]!, { activeThreadId: null, activeProjectId: null, isCompactViewport: false, onNavigate() {}, searchQuery: "", Original: () => null }, {
+  const slot = renderSlot(app.threadLists[0]!, { activeThreadId: null, activeProjectId: null, isCompactViewport: false, onNavigate() {}, searchQuery: "" }, {
     sidebarThreads: { projects: [], threads: [] }, realtimeConnectionState: "connected",
     rpc: { bots_list: () => ++calls === 1 ? result("Initial") : calls === 2 ? new Promise(resolve => { resolveOld = resolve; }) : result("Latest") },
   });

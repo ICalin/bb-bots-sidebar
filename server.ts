@@ -216,7 +216,7 @@ export default async function plugin(bb: BbPluginApi) {
   bb.agents.configure((ctx) => {
     const botId = contextOwner(ctx);
     const bot = botId ? store.get(botId) : null;
-    return bot ? { tools: ["bot_read_state", "bot_update_state"], skills: [], instructions: botInstructions(bot, botProjectContext(bot, ctx.project, store)) } : { tools: [], skills: [] };
+    return bot ? { tools: ["bot_read_state", "bot_update_state"], skills: ["bots-sidebar"], instructions: botInstructions(bot, botProjectContext(bot, ctx.project, store)) } : { tools: [], skills: [] };
   });
   bb.agents.registerTool({
     name: "bot_read_state", description: "Read this bot's embedded identity and revision, memory facts, settings, or linked/available projects. Supply only target: identity, memory, settings, or project. State is managed privately by BB and is independent of the current machine or working directory.",
@@ -270,12 +270,13 @@ export default async function plugin(bb: BbPluginApi) {
       const legacyHomes = new Set(bots.map((bot) => bot.legacyHomeProjectId));
       return { bots, projectOwners: store.projectOwners().map(({ projectId, botId }) => ({ projectId, botId })), warnings: [...warnings, ...state.warnings()], personalProjectId: personalId, threadBindings: store.bindings(), sections: store.sections(), hosts: hosts.map((host) => ({ id: host.id, name: host.name, connected: host.status === "connected" })), projects: projects.filter((project) => project.kind === "standard" && !legacyHomes.has(project.id)).map((project) => ({ id: project.id, name: project.name })) };
     },
-    bot_create: ({ name, role, hostId, avatar, sectionId, linkedProjectIds, ownedProjectIds, soul, memory, settings }) => serial("registry", async () => {
+    bot_create: ({ name, role, hostId, avatar, sectionId, linkedProjectIds, ownedProjectIds, soul, memory, settings, launchPreset }) => serial("registry", async () => {
       await importLegacy(); await validateLinks(linkedProjectIds); if (ownedProjectIds) await validateLinks(ownedProjectIds); validateSection(sectionId);
       if (!(await bb.sdk.hosts.list()).some((host) => host.id === hostId)) throw new Error("Choose an enrolled execution machine");
       const id = `bot_${randomUUID().replaceAll("-", "")}`;
       let created: BotMetadata = { id, name, role, hostId, stateReady: true, legacyHomeProjectId: null, avatar, sectionId, linkedProjectIds, soul, agents: "", memory: "", settings: {}, stateHashes: { ...EMPTY_HASHES }, order: store.list().length, mainThreadId: null, hiddenUntilActivity: false, hiddenAt: null, updatedAt: Date.now(), legacyProjectId: null };
       if (memory !== undefined) created = applyState(created, "MEMORY.md", memory);
+      if (launchPreset !== undefined) created.launchPreset = launchPreset;
       if (settings !== undefined) created = applyState(created, "settings.json", stateContent({ ...created, settings }, "settings.json"));
       store.saveWithProjects(created, ownedProjectIds);
       const ready = await state.prepare(id); publish(); return ready;

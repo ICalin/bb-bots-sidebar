@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
-import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
+import { renderSlot } from "./sidebar-host";
 import { bot, personalProjectId, thread } from "./fixtures";
 
 const split = vi.hoisted(() => ({ onPointerDown: vi.fn() }));
@@ -24,10 +25,10 @@ async function mount(fail = false) {
   function Host() {
     const [activeThreadId, setActive] = useState<string | null>(null);
     return <><button onClick={() => setActive("grandchild")}>Go grandchild</button><button onClick={() => setActive(null)}>Go elsewhere</button>
-      <Sidebar activeThreadId={activeThreadId} activeProjectId="project" isCompactViewport={false} onNavigate={() => {}} searchQuery="" Original={() => null} /></>;
+      <Sidebar activeThreadId={activeThreadId} activeProjectId="project" isCompactViewport={false} onNavigate={() => {}} searchQuery="" /></>;
   }
   const slot = renderSlot({ component: Host }, {}, {
-    sidebarThreads: { projects: [{ id: "project", name: "Project", isPersonal: false }], threads: rows },
+    sidebarThreads: { projects: [{ id: "project", name: "Project", isPersonal: false, href: "/projects/project", settingsHref: "/projects/project/settings" }], threads: rows },
     rpc: {
       bots_list: () => ({ personalProjectId, bots: [{ ...metadata }], sections: [], hosts: [], projects: [], warnings: [], threadBindings: rows.filter(row => !row.parentThreadId).map(row => ({ threadId: row.id, botId: bot.id })) }),
       conversation_reorder: (input) => {
@@ -50,7 +51,7 @@ it("opens the first ordered conversation without unfolding, not the legacy main"
   const { slot, botRow, toggle, open } = await mount();
   expect(botRow.lastElementChild).toBe(toggle()); expect(toggle().textContent?.trim()).toBe("3");
   fireEvent.click(open());
-  expect(slot.inspection.sidebarActionCalls).toEqual([{ method: "open", threadId: "first", options: undefined }]);
+  expect(slot.inspection.navigateCalls).toEqual([{ method: "toThread", threadId: "first", options: undefined }]);
   expect(toggle().getAttribute("aria-expanded")).toBe("false");
   expect(slot.queryByRole("group", { name: "Conversations for Test bot" })).toBeNull();
   fireEvent.click(toggle());
@@ -68,9 +69,9 @@ it("double-clicking the bot toggles the list once, without duplicate navigation"
     expect(toggle().getAttribute("aria-expanded")).toBe(expanded);
     expect(slot.queryByText("Conversation child")).toBeNull();
   }
-  expect(slot.inspection.sidebarActionCalls).toEqual([
-    { method: "open", threadId: "first", options: undefined },
-    { method: "open", threadId: "first", options: undefined },
+  expect(slot.inspection.navigateCalls).toEqual([
+    { method: "toThread", threadId: "first", options: undefined },
+    { method: "toThread", threadId: "first", options: undefined },
   ]);
   fireEvent.doubleClick(toggle());
   expect(toggle().getAttribute("aria-expanded")).toBe("false");
@@ -99,7 +100,7 @@ it.each(["before", "after", "nest", "escape", "outside", "touch", "blur", "unmou
     await waitFor(() => expect(slot.inspection.rpcCalls).toContainEqual({ method: "conversation_nest", input: { threadId: "last", parentThreadId: "first" } }));
   } else expect(slot.inspection.rpcCalls.every(call => call.method === "bots_list")).toBe(true);
   if (mode === "failure") { expect(await slot.findByRole("alert")).toHaveProperty("textContent", "Reorder failed"); expect(slot.container.querySelector('[data-sidebar-thread-id]')?.getAttribute("data-sidebar-thread-id")).toBe("first"); }
-  expect(split.onPointerDown).toHaveBeenCalledOnce(); expect(slot.inspection.sidebarActionCalls).toEqual([]);
+  expect(split.onPointerDown).toHaveBeenCalledOnce(); expect(slot.inspection.navigateCalls).toEqual([]);
   expect(document.querySelector(".conversation-drag-ghost")).toBeNull();
 });
 
@@ -139,8 +140,8 @@ it.each(["before", "after"])("dragging %s persists order without nesting or navi
   await waitFor(() => expect(slot.inspection.rpcCalls).toContainEqual({ method: "conversation_reorder", input: { botId: bot.id, threadId: "last", targetThreadId: "first", position } }));
   const expected = position === "before" ? ["last", "first", "main"] : ["first", "last", "main"];
   await waitFor(() => expect(Array.from(slot.container.querySelectorAll('[data-sidebar-thread-id]')).map(row => row.getAttribute("data-sidebar-thread-id"))).toEqual(expected));
-  expect(slot.inspection.sidebarActionCalls).toEqual([]); expect(slot.inspection.rpcCalls.some(call => call.method === "conversation_nest" || call.method === "bots_reorder")).toBe(false);
-  fireEvent.click(open()); expect(slot.inspection.sidebarActionCalls[0]).toMatchObject({ threadId: expected[0] });
+  expect(slot.inspection.navigateCalls).toEqual([]); expect(slot.inspection.rpcCalls.some(call => call.method === "conversation_nest" || call.method === "bots_reorder")).toBe(false);
+  fireEvent.click(open()); expect(slot.inspection.navigateCalls[0]).toMatchObject({ threadId: expected[0] });
 });
 
 it("drops an existing root on its own bot to make it first without navigation or collapse", async () => {
@@ -155,12 +156,13 @@ it("drops an existing root on its own bot to make it first without navigation or
   fireEvent.click(within(botRow).getByRole("button", { name: /^Test bot/ }));
   await waitFor(() => expect(slot.inspection.rpcCalls).toContainEqual({ method: "conversation_reorder", input: { botId: bot.id, threadId: "last", targetThreadId: "first", position: "before" } }));
   await waitFor(() => expect(slot.container.querySelector('[data-sidebar-thread-id]')?.getAttribute("data-sidebar-thread-id")).toBe("last"));
-  expect(toggle().getAttribute("aria-expanded")).toBe("true"); expect(slot.inspection.sidebarActionCalls).toEqual([]);
+  expect(toggle().getAttribute("aria-expanded")).toBe("true"); expect(slot.inspection.navigateCalls).toEqual([]);
 });
 
 it("archives the first row and opens the next without replacing a main", async () => {
   const { slot, toggle, open } = await mount(); fireEvent.click(toggle());
   fireEvent.click(slot.getByRole("button", { name: "Archive Conversation first" })); fireEvent.click(open());
-  expect(slot.inspection.sidebarActionCalls).toEqual([{ method: "archive", threadId: "first" }, { method: "open", threadId: "main", options: undefined }]);
+  expect(slot.nativeActionCalls).toEqual([{ key: "bb--core/archive", threadId: "first" }]);
+  expect(slot.inspection.navigateCalls).toEqual([{ method: "toThread", threadId: "first", options: undefined }]);
   expect(slot.inspection.rpcCalls.every(call => call.method === "bots_list")).toBe(true);
 });
