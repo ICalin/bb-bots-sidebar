@@ -17,6 +17,19 @@ export type ConversationTarget = {
   sourceThreadId?: string;
 };
 
+const LAST_SECTION_KEY = "bots-sidebar:last-section";
+// Default to the section used last; fall back to "Random" when it no longer exists.
+function defaultSectionId(sections: readonly PluginSidebarSection[]): string | null {
+  let last: string | null = null;
+  try { last = localStorage.getItem(LAST_SECTION_KEY); } catch { /* storage unavailable */ }
+  if (last === "") return null;
+  if (last && sections.some((section) => section.id === last)) return last;
+  return sections.find((section) => section.name.toLowerCase() === "random")?.id ?? null;
+}
+function rememberSection(sectionId: string | null) {
+  try { localStorage.setItem(LAST_SECTION_KEY, sectionId ?? ""); } catch { /* storage unavailable */ }
+}
+
 export function ConversationDialog({ target, sections = [], onClose, onCreate }: {
   target: ConversationTarget;
   sections?: readonly PluginSidebarSection[];
@@ -27,7 +40,7 @@ export function ConversationDialog({ target, sections = [], onClose, onCreate }:
   // picker handle changes without re-seeding and resetting the user's choices.
   const projectId = target.projectId;
   const seeds = target.kind === "fork" ? {} : launchComposerSeeds(target.bot.launchPreset);
-  const [sectionId, setSectionId] = useState<string | null>(() => sections.find((section) => section.name.toLowerCase() === "random")?.id ?? null);
+  const [sectionId, setSectionId] = useState<string | null>(() => defaultSectionId(sections));
   const [sectionDraft, setSectionDraft] = useState<string | null>(null);
   const [notionDraft, setNotionDraft] = useState("");
   const sdk = useSdk();
@@ -58,6 +71,7 @@ export function ConversationDialog({ target, sections = [], onClose, onCreate }:
           if (created && notionUrl) await setLink(created.id, notionUrl);
           const targetSectionId = created ? created.id : sectionId;
           await onCreate(request, targetSectionId);
+          rememberSection(targetSectionId);
         }
         catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); throw cause; }
         finally { submitting.current = false; setPending(false); }
