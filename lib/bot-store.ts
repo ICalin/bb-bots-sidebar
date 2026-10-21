@@ -1,5 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { notionLinksSchema, notionRefreshConfigSchema, progressRecordSchema, type SectionProgress } from "./notion-progress";
 import { metadataSchema, sectionSchema, type BotMetadata, type BotSection } from "../contract";
 
 export function createBotStore(bb: BbPluginApi) {
@@ -147,6 +148,12 @@ export function createBotStore(bb: BbPluginApi) {
     saveAll(bots: BotMetadata[]) { db.transaction(() => { bots.forEach(save); })(); },
     bindings(): { threadId: string; botId: string }[] { return db.prepare("SELECT thread_id AS threadId, bot_id AS botId FROM bot_threads ORDER BY thread_id").all() as { threadId: string; botId: string }[]; },
     sections(): BotSection[] { return (state<unknown[]>("sections") ?? []).map((value) => sectionSchema.parse(value)).sort((a, b) => a.order - b.order); },
+    notionLinks(): Record<string, string> { return notionLinksSchema.parse(state("section_notion_links") ?? {}); },
+    saveNotionLinks(links: Record<string, string>) { setState("section_notion_links", notionLinksSchema.parse(links)); },
+    notionProgress(): Record<string, SectionProgress> { return progressRecordSchema.parse(state("notion_progress") ?? {}); },
+    saveNotionProgress(progress: Record<string, SectionProgress>) { setState("notion_progress", progressRecordSchema.parse(progress)); },
+    notionRefresh(): z.infer<typeof notionRefreshConfigSchema> | null { const value = state("notion_refresh"); return value ? notionRefreshConfigSchema.parse(value) : null; },
+    saveNotionRefresh(config: z.infer<typeof notionRefreshConfigSchema>) { setState("notion_refresh", notionRefreshConfigSchema.parse(config)); },
     saveSections(sections: BotSection[]) { setState("sections", sections.map((value) => sectionSchema.parse(value))); },
     stageStart(token: string, botId: string, projectId: string) { db.prepare("INSERT INTO bot_starts(token,bot_id,created_at,project_id) VALUES (?,?,?,?)").run(token, botId, Date.now(), projectId); },
     pendingStartContext(token: string): { botId: string; projectId: string | null } | null { return db.prepare("SELECT bot_id AS botId, project_id AS projectId FROM bot_starts WHERE token = ?").get(token) as { botId: string; projectId: string | null } | undefined ?? null; },

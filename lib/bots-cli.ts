@@ -1,11 +1,19 @@
 import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
 import type { BotMetadata } from "../contract";
+import { notionRefreshConfigSchema, progressInputSchema } from "./notion-progress";
 import type { BotStore } from "./bot-store";
 import { listBotConversations } from "./bot-conversations";
 import { conversationRoots, orderConversations } from "./conversation-order";
 
 const USAGE = `bb bots list [--json] [--limit 1-100] [--offset N]
 bb bots message <bot-id-or-exact-name> <message> [--thread <conversation-id>] [--json]
+bb bots notion-links [--json]
+bb bots notion-progress set '<json>'
+bb bots notion-refresh-automation <automationId> <projectId>
+
+notion-links prints each section's id, name (when resolvable), and linked Notion URL.
+notion-progress set takes {"<sectionId>": {done,inReview,inProgress,todo,other,total,mine,others}} or {"<sectionId>": {"error": "..."}}.
+notion-refresh-automation stores the automation the sidebar's "Refresh from Notion" runs.
 
 Messages go to the bot's first conversation by default and queue while it is busy.
 --thread targets a conversation belonging to that bot (for replies).
@@ -79,15 +87,39 @@ export function frameBotMessage(sender: Sender, message: string): string {
   ].join("\n");
 }
 
-export function registerBotsCli(bb: BbPluginApi, store: BotStore, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>) {
+export function registerBotsCli(bb: BbPluginApi, store: BotStore, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>, publish: () => unknown = () => {}) {
   bb.cli.register({
     name: "bots", summary: "List bots and send attributed asynchronous messages to their conversations",
     commands: [
       { name: "list", summary: "List bot IDs, activity, visibility, and owned/joined project names without private state", usage: "bb bots list [--json] [--limit 1-100] [--offset N]" },
+      { name: "notion-links", summary: "List section → Notion project links", usage: "bb bots notion-links [--json]" },
+      { name: "notion-progress", summary: "Store Notion ticket progress per section", usage: "bb bots notion-progress set <json>" },
+      { name: "notion-refresh-automation", summary: "Set the automation run by Refresh from Notion", usage: "bb bots notion-refresh-automation <automationId> <projectId>" },
       { name: "message", summary: "Message a bot's first conversation, or reply to one of its conversations; queues while busy", usage: "bb bots message <bot-id-or-exact-name> <message> [--thread <conversation-id>] [--json]" },
     ],
     async run(argv, ctx) {
       try {
+        if (argv[0] === "notion-links") {
+          const json = argv.includes("--json");
+          if (argv.slice(1).some((arg) => arg !== "--json")) throw new Error(`Unexpected arguments\n${USAGE}`);
+          const names = new Map<string, string>();
+          try { for (const section of await bb.sdk.threadSections.list({ signal: ctx.signal })) names.set(section.id, section.name); } catch { /* names are optional */ }
+          const links = Object.entries(store.notionLinks()).map(([sectionId, url]) => ({ sectionId, url }));
+          return { exitCode: 0, stdout: json ? JSON.stringify(links) : links.map(({ sectionId, url }) => [sectionId, names.has(sectionId) ? printable(names.get(sectionId)!) : "", url].join("\t")).join("\n") || "No Notion links." };
+        }
+        if (argv[0] === "notion-progress") {
+          if (argv[1] !== "set" || argv.length !== 3) throw new Error(`Usage: bb bots notion-progress set '<json>'\n${USAGE}`);
+          const input = progressInputSchema.parse(JSON.parse(argv[2]!));
+          const now = Date.now(), current = store.notionProgress();
+          for (const [sectionId, value] of Object.entries(input)) current[sectionId] = { ...value, updatedAt: now };
+          store.saveNotionProgress(current); publish();
+          return { exitCode: 0, stdout: `Updated progress for ${Object.keys(input).length} section(s).` };
+        }
+        if (argv[0] === "notion-refresh-automation") {
+          if (argv.length !== 3) throw new Error(`Usage: bb bots notion-refresh-automation <automationId> <projectId>\n${USAGE}`);
+          store.saveNotionRefresh(notionRefreshConfigSchema.parse({ automationId: argv[1], projectId: argv[2] }));
+          return { exitCode: 0, stdout: "Refresh automation saved." };
+        }
         const options = parse(argv);
         if (!options) return { exitCode: 0, stdout: USAGE };
         if (options.command === "list") {

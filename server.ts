@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
 import type { BbPluginApi, PluginAgentConfigurationContext } from "@get-bb/plugin-sdk";
 import type { z } from "zod";
@@ -18,6 +20,7 @@ export type { BotAvatar, BotMetadata, BotSection, ProjectCreateInput } from "./c
 
 const CHANGED = "project-bots-changed";
 const START_MARKER = /^\[bb-bot-start:([a-f0-9-]{36})\]/;
+const execFileAsync = promisify(execFile);
 const sha256 = (content: string) => createHash("sha256").update(content).digest("hex");
 
 export default async function plugin(bb: BbPluginApi) {
@@ -253,7 +256,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
   bb.events.on("thread.created", async ({ thread }) => { await routeNewThread(thread, true); });
 
-  registerBotsCli(bb, store, resolveOwner);
+  registerBotsCli(bb, store, resolveOwner, publish);
   registerBotMentions(bb, store);
 
   bb.rpc.register(rpcContract, {
@@ -300,6 +303,20 @@ export default async function plugin(bb: BbPluginApi) {
       store.saveAll(store.list().filter((bot) => bot.sectionId === sectionId).map((bot) => ({ ...bot, sectionId: null, updatedAt: nextTimestamp(bot.updatedAt) })));
       store.saveSections(store.sections().filter((section) => section.id !== sectionId)); publish(); return { ok: true } as const;
     }),
+    section_notion_links_get: () => store.notionLinks(),
+    section_notion_link_set: ({ sectionId, url }) => serial("notion", async () => {
+      const { [sectionId]: _previous, ...rest } = store.notionLinks();
+      store.saveNotionLinks(url ? { ...rest, [sectionId]: url } : rest); publish(); return { ok: true } as const;
+    }),
+    notion_progress_get: () => store.notionProgress(),
+    notion_refresh: async () => {
+      const config = store.notionRefresh();
+      if (!config) return { ok: false, message: "Refresh isn't set up yet" };
+      try {
+        await execFileAsync(process.env.BB_CLI || "bb", ["automation", "run", config.automationId, "--project", config.projectId], { timeout: 60_000 });
+        return { ok: true, message: "Refresh started" };
+      } catch (error) { return { ok: false, message: error instanceof Error ? error.message.split("\n")[0]! : String(error) }; }
+    },
     visibility_set: ({ botId, hiddenUntilActivity }) => serial(botId, async () => {
       const bot = store.require(botId); const next = store.save({ ...bot, hiddenUntilActivity, hiddenAt: hiddenUntilActivity ? Date.now() : null, updatedAt: nextTimestamp(bot.updatedAt) }); publish(); return next;
     }),

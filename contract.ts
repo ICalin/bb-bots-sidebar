@@ -2,6 +2,7 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { AVATAR_EXPRESSION_IDS, AVATAR_MOTION_IDS, AVATAR_SHAPE_IDS } from "./lib/appearance";
 import { newThreadRequestSchema } from "./lib/new-thread-request";
+import { notionLinksSchema, progressRecordSchema } from "./lib/notion-progress";
 import { launchPresetSchema } from "./lib/launch-preset";
 
 import { MEMORY_MAX_CHARS, MEMORY_LIMIT_ERROR } from "./lib/memory-limit";
@@ -97,6 +98,10 @@ export const rpcContract = defineRpcContract({
   section_create: { input: z.object({ name: z.string().trim().min(1).max(80) }).strict(), output: sectionSchema },
   section_update: { input: z.object({ sectionId: id, name: z.string().trim().min(1).max(80) }).strict(), output: sectionSchema },
   section_delete: { input: z.object({ sectionId: id }).strict(), output: z.object({ ok: z.literal(true) }).strict() },
+  section_notion_links_get: { input: z.null(), output: notionLinksSchema },
+  section_notion_link_set: { input: z.object({ sectionId: id, url: z.string().trim().url().max(2000).nullable() }).strict(), output: z.object({ ok: z.literal(true) }).strict() },
+  notion_progress_get: { input: z.null(), output: progressRecordSchema },
+  notion_refresh: { input: z.null(), output: z.object({ ok: z.boolean(), message: z.string() }).strict() },
   visibility_set: { input: z.object({ botId: id, hiddenUntilActivity: z.boolean() }).strict(), output: metadataSchema },
   main_set: { input: z.object({ botId: id, threadId: id }).strict(), output: metadataSchema },
   conversation_create: { input: z.object({ botId: id, request: newThreadRequestSchema, makeMain: z.boolean().optional() }).strict(), output: z.object({ threadId: id }).strict() },

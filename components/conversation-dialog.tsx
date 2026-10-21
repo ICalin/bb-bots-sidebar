@@ -5,7 +5,7 @@ import type { BotMetadata } from "../contract";
 import { conversationDraftKey } from "../lib/worktree-launch";
 import { launchComposerSeeds } from "../lib/launch-preset";
 import { Input } from "./ui/input";
-import { isNotionUrl, setSectionNotionLink } from "../lib/section-notion-links";
+import { isNotionUrl, useSetSectionNotionLink } from "../lib/section-notion-links";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 
 export type ConversationTarget = {
@@ -31,6 +31,7 @@ export function ConversationDialog({ target, sections = [], onClose, onCreate }:
   const [sectionDraft, setSectionDraft] = useState<string | null>(null);
   const [notionDraft, setNotionDraft] = useState("");
   const sdk = useSdk();
+  const setLink = useSetSectionNotionLink();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submitting = useRef(false);
@@ -54,7 +55,7 @@ export function ConversationDialog({ target, sections = [], onClose, onCreate }:
           const notionUrl = notionDraft.trim();
           if (name && notionUrl && !isNotionUrl(notionUrl)) throw new Error("The Notion project must be a Notion page link.");
           const created = name ? await sdk.threadSections.create({ name }) : null;
-          if (created) setSectionNotionLink(created.id, notionUrl || null);
+          if (created && notionUrl) await setLink(created.id, notionUrl);
           const targetSectionId = created ? created.id : sectionId;
           await onCreate(request, targetSectionId);
         }
