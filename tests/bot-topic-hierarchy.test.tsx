@@ -6,6 +6,9 @@ import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import { renderSlot } from "./sidebar-host";
 import { bot, personalProjectId, thread } from "./fixtures";
 
+// These tests cover the manual drag order.
+beforeEach(() => { localStorage.setItem("bots-sidebar:conversation-sort", "manual"); });
+
 const split = vi.hoisted(() => ({ onPointerDown: vi.fn() }));
 vi.mock("@get-bb/plugin-sdk/app", async importOriginal => {
   const sdk = await importOriginal<typeof import("@get-bb/plugin-sdk/app")>();

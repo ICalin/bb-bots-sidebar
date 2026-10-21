@@ -32,8 +32,8 @@ export function PrBadge({ threadId }: { threadId: string }) {
   if (!pullRequest) return null;
   const checks = pullRequest.state === "open" || pullRequest.state === "draft" ? CHECKS_COLOR[pullRequest.experimental_checks.state] : undefined;
   const label = `PR #${pullRequest.number} ${pullRequest.state}${checks ? `, checks ${pullRequest.experimental_checks.state}` : ""}`;
-  return <a href={pullRequest.url} target="_blank" rel="noreferrer" title={label} aria-label={label} onClick={(event) => event.stopPropagation()} className={`relative flex shrink-0 items-center px-0.5 ${STATE_COLOR[pullRequest.state]}`}>
+  return <span role="img" title={label} aria-label={label} onClick={(event) => { event.preventDefault(); event.stopPropagation(); window.open(pullRequest.url, "_blank", "noopener"); }} className={`relative flex shrink-0 items-center px-0.5 ${STATE_COLOR[pullRequest.state]}`}>
     <PrGlyph state={pullRequest.state} />
     {checks ? <span className={`absolute -right-0 -top-0 size-1.5 rounded-full ${checks}`} /> : null}
-  </a>;
+  </span>;
 }

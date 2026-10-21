@@ -411,9 +411,8 @@ function ThreadRow({ thread, siblings, childrenByParent, activePath, navigate, a
   ]}>
     <div draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/x-bb-thread-id", thread.id); }} className="thread-row flex min-h-7 items-center rounded-md text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground" aria-current={activeThreadId === thread.id ? "page" : undefined} data-active-descendant={!branch.expanded && branch.containsActive}>
       <a href={thread.href} {...split.splitProps} onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); reorderDrag.begin(thread, event); }} ref={branch.rowRef} role="link" tabIndex={0} aria-current={activeThreadId === thread.id ? "page" : undefined} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); } }} data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id} aria-keyshortcuts={shortcut?.ariaKeyshortcuts} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-1 pr-1" onClick={(event) => { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); }}>
-        <SidebarConversationStatus thread={thread} /><span className="min-w-0 flex-1 truncate"><ThreadTitle threadId={thread.id} /></span>{shortcut ? <kbd className="shrink-0 rounded bg-muted px-1 text-[9px]">{shortcut.label}</kbd> : null}
+        <SidebarConversationStatus thread={thread} /><PrBadge threadId={thread.id} /><span className="min-w-0 flex-1 truncate"><ThreadTitle threadId={thread.id} /></span>{shortcut ? <kbd className="shrink-0 rounded bg-muted px-1 text-[9px]">{shortcut.label}</kbd> : null}
       </a>
-      <PrBadge threadId={thread.id} />
       <ConversationArchiveButton thread={thread} />
       <BranchToggle title={title} count={children.length} expanded={branch.expanded} childrenId={branch.childrenId} onToggle={branch.toggle} />
     </div>
@@ -480,6 +479,8 @@ function BotGroup({
   const dropToTop = conversationDropTarget === "first" || Boolean(reorderDrag.target?.botRow);
   const dropHint = conversationDropTarget === "first" ? "Make first" : conversationDropTarget === "last" ? "Add to end" : dropToTop ? "Drop to make top conversation" : null;
   const portalScope = usePortalScopeProps();
+  const [sortByActivity, setSortByActivity] = useState(readSortByActivity);
+  const toggleSort = () => setSortByActivity((current) => { try { localStorage.setItem(SORT_KEY, current ? "manual" : "activity"); } catch { /* storage unavailable */ } return !current; });
   const renderThread = (thread: PluginSidebarThread) => <ThreadRow key={thread.id} thread={thread} siblings={roots} childrenByParent={childrenByParent} activePath={activePath} navigate={navigate} activeThreadId={activeThreadId} onNavigate={onNavigate} onReorder={onReorder} onNewInWorktree={onNewInWorktree} onFork={onFork} onNest={onNest} reorderDrag={reorderDrag} />;
   const botSelected = selected || threads.some((thread) => thread.id === activeThreadId);
   const latest = roots[0];
@@ -493,6 +494,7 @@ function BotGroup({
         { label: "New conversation in project…", action: onNewInProject, disabled: !hasWorkProjects },
         { label: "New conversation in worktree…", action: () => onNewInWorktree(), disabled: !hasWorkProjects },
         { label: topicsVisible ? "Collapse conversations" : "Expand conversations", action: onToggleTopics },
+        { label: sortByActivity ? "Sort manually (drag order)" : "Sort by recent activity", action: toggleSort },
         { label: "Edit bot…", action: () => onEdit() },
         { label: "Add / manage projects…", action: () => onEdit("projects") },
         { label: hidden ? "Show in sidebar" : "Hide until activity", action: () => onVisibilityChange(!hidden) },
@@ -518,11 +520,21 @@ function BotGroup({
       </div>
       </RowContextMenu>
       <div id={conversationsId} role="group" aria-label={`Conversations for ${metadata.name}`} className="bot-topics" hidden={!topicsVisible}>
-        {topicsVisible ? <SectionedThreads roots={roots} sections={threadSections} renderThread={renderThread} dropSectionId={reorderDrag.target?.position === "section" ? reorderDrag.target.sectionId ?? "" : undefined} /> : null}
+        {topicsVisible ? <SectionedThreads roots={sortByActivity ? byLatestActivity(roots) : roots} sections={threadSections} renderThread={renderThread} dropSectionId={reorderDrag.target?.position === "section" ? reorderDrag.target.sectionId ?? "" : undefined} /> : null}
       </div>
       {reorderDrag.drag ? createPortal(<div {...portalScope} ref={reorderDrag.ghostRef} className="conversation-drag-ghost rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md" aria-hidden="true"><div className="truncate">{reorderDrag.drag.title}</div><div className="text-[10px] text-muted-foreground">{reorderDrag.target ? reorderDrag.target.botRow ? "Make top conversation" : reorderDrag.target.position === "section" ? "Move to section" : reorderDrag.target.position === "inside" ? "Nest conversation" : "Reorder conversation" : "Drag above/below a sibling · Shift to nest"}</div></div>, document.body) : null}
     </section>
   );
+}
+
+// A conversation jumps to the top when a turn finishes or it needs attention.
+const SORT_KEY = "bots-sidebar:conversation-sort";
+function readSortByActivity(): boolean {
+  try { return localStorage.getItem(SORT_KEY) !== "manual"; } catch { return true; }
+}
+
+function byLatestActivity(threads: PluginSidebarThread[]): PluginSidebarThread[] {
+  return [...threads].sort((a, b) => b.latestAttentionAt - a.latestAttentionAt || b.updatedAt - a.updatedAt);
 }
 
 const COLLAPSED_SECTIONS_KEY = "bots-sidebar:collapsed-sections";
@@ -627,6 +639,7 @@ function RecentRow({
       >
         <span className="flex size-5 shrink-0 items-center justify-center">
           <SidebarConversationStatus thread={thread} />
+          <PrBadge threadId={thread.id} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
@@ -635,7 +648,6 @@ function RecentRow({
           <span className="block truncate text-[8px] leading-[10px] text-muted-foreground">{detail}</span>
         </span>
       </a>
-      <PrBadge threadId={thread.id} />
       <ConversationArchiveButton thread={thread} />
       <BranchToggle title={title} count={children.length} expanded={branch.expanded} childrenId={branch.childrenId} onToggle={branch.toggle} />
       </div>
