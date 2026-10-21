@@ -525,6 +525,8 @@ function BotGroup({
 // Unsectioned conversations stay on top; the rest are grouped under their bb thread section.
 function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { roots: PluginSidebarThread[]; sections: readonly PluginSidebarSection[]; renderThread: (thread: PluginSidebarThread) => ReactElement; dropSectionId?: string }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const [renaming, setRenaming] = useState<PluginSidebarSection | null>(null);
+  const sdk = useSdk();
   const groups = sections.map((section) => ({ section, threads: roots.filter((thread) => thread.sectionId === section.id) })).filter((group) => group.threads.length > 0);
   const grouped = new Set(groups.flatMap((group) => group.threads.map((thread) => thread.id)));
   const toggle = (id: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -533,14 +535,17 @@ function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { ro
       <ul data-section-drop-target="" className={dropSectionId === "" ? "min-h-2 rounded-md bg-state-hover" : "min-h-2"}>{roots.filter((thread) => !grouped.has(thread.id)).map(renderThread)}</ul>
       {groups.map(({ section, threads }) => (
         <div key={section.id} className={dropSectionId === section.id ? "thread-section-group rounded-md bg-state-hover" : "thread-section-group"} data-section-drop-target={section.id}>
+          <RowContextMenu items={[{ label: "Rename section…", action: () => setRenaming(section) }]}>
           <button type="button" className="flex w-full items-center gap-1 px-1 pt-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground" aria-expanded={!collapsed.has(section.id)} onClick={() => toggle(section.id)}>
             <span className={collapsed.has(section.id) ? "" : "rotate-90"}><TinyIcon name="chevron" /></span>
             <span className="min-w-0 flex-1 truncate">{section.name}</span>
             <span className="tabular-nums">{threads.length}</span>
           </button>
+          </RowContextMenu>
           {collapsed.has(section.id) ? null : <ul>{threads.map(renderThread)}</ul>}
         </div>
       ))}
+      {renaming ? <RenameConversationDialog title={renaming.name} heading="Rename section" description="Choose the section name shown in the sidebar." onSave={async (name) => { await sdk.threadSections.update({ id: renaming.id, name }); }} onClose={() => setRenaming(null)} /> : null}
     </>
   );
 }
