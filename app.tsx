@@ -615,6 +615,7 @@ function RecentRow({
 
 function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
   const sidebar = experimental_useSidebarThreads();
+  const sdk = useSdk();
   const navigate = useBbNavigate();
   const portalScope = usePortalScopeProps();
   const [conversation, setConversation] = useState<ConversationTarget | null>(null);
@@ -907,7 +908,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
       {assigning ? <AssignConversationDialog bots={bots} title={assigning.title ?? assigning.titleFallback ?? "Untitled conversation"} onClose={() => setAssigning(null)} onAssign={async (botId) => {
         await assignConversation(assigning, botId);
       }} /> : null}
-      {conversation ? <ConversationDialog target={conversation} onClose={() => setConversation(null)} onCreate={async (request) => {
+      {conversation ? <ConversationDialog target={conversation} sections={sidebar.sections} onClose={() => setConversation(null)} onCreate={async (request, sectionId) => {
         const bot = bots.find((bot) => bot.id === conversation.bot.id);
         if (!bot) throw new Error("This bot is no longer available.");
         if (!allowsConversationProject(request.projectId, bot, personalProjectId, projects)) {
@@ -916,6 +917,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
         const { threadId } = conversation.kind === "fork"
           ? await rpc.call("conversation_fork", { botId: bot.id, sourceThreadId: conversation.sourceThreadId!, request })
           : await rpc.call("conversation_create", { botId: bot.id, request, makeMain: conversation.makeMain });
+        if (sectionId) await sdk.threads.update({ threadId, sectionId });
         setConversation(null); refresh();
         navigate.toThread(threadId);
         onNavigate();

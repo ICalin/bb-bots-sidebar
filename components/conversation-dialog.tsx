@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { experimental_NewThreadComposer as NewThreadComposer } from "@get-bb/plugin-sdk/app";
-import type { NewThreadRequest } from "@get-bb/plugin-sdk/app";
+import type { NewThreadRequest, PluginSidebarSection } from "@get-bb/plugin-sdk/app";
 import type { BotMetadata } from "../contract";
 import { conversationDraftKey } from "../lib/worktree-launch";
 import { launchComposerSeeds } from "../lib/launch-preset";
@@ -15,15 +15,17 @@ export type ConversationTarget = {
   sourceThreadId?: string;
 };
 
-export function ConversationDialog({ target, onClose, onCreate }: {
+export function ConversationDialog({ target, sections = [], onClose, onCreate }: {
   target: ConversationTarget;
+  sections?: readonly PluginSidebarSection[];
   onClose: () => void;
-  onCreate: (request: NewThreadRequest) => Promise<void>;
+  onCreate: (request: NewThreadRequest, sectionId: string | null) => Promise<void>;
 }) {
   // The target is captured when the popup opens. Let the host's own project
   // picker handle changes without re-seeding and resetting the user's choices.
   const projectId = target.projectId;
   const seeds = target.kind === "fork" ? {} : launchComposerSeeds(target.bot.launchPreset);
+  const [sectionId, setSectionId] = useState<string | null>(() => sections.find((section) => section.name.toLowerCase() === "random")?.id ?? null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submitting = useRef(false);
@@ -41,10 +43,14 @@ export function ConversationDialog({ target, onClose, onCreate }: {
       <NewThreadComposer {...seeds} defaultProjectId={projectId} defaultEnvironment={target.environment} layout="document" focusRequest={1} draftKey={conversationDraftKey({ botId: target.bot.id, kind: target.kind, makeMain: target.makeMain, projectId, environment: target.environment })} onSubmit={async (request) => {
         if (submitting.current) throw new Error("A conversation is already being created.");
         submitting.current = true; setPending(true); setError(null);
-        try { await onCreate(request); }
+        try { await onCreate(request, sectionId); }
         catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); throw cause; }
         finally { submitting.current = false; setPending(false); }
       }} />
+      {sections.length ? <label className="flex items-center gap-2 text-xs text-muted-foreground">Section<select className="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground" value={sectionId ?? ""} onChange={(event) => setSectionId(event.target.value || null)}>
+        <option value="">No section</option>
+        {sections.map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}
+      </select></label> : null}
       {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
       {pending ? <p role="status" className="text-xs text-muted-foreground">Creating conversation…</p> : null}
     </DialogContent>
