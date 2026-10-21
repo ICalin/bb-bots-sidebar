@@ -566,7 +566,7 @@ function ProgressLabel({ progress }: { progress: SectionProgress }) {
 function ProgressBar({ progress }: { progress: SectionCounts }) {
   if (!progress.total) return null;
   const part = (n: number) => ({ width: `${(n / progress.total) * 100}%` });
-  return <div title={progressTitle(progress)} className="mx-1 mb-0.5 flex h-0.5 overflow-hidden rounded-full bg-muted"><div className="bg-green-500" style={part(progress.done)} /><div className="bg-purple-500" style={part(progress.inReview)} /><div className="bg-sky-400" style={part(progress.inProgress)} /></div>;
+  return <div title={progressTitle(progress)} className="mx-1 mb-0.5 flex h-0.5 overflow-hidden rounded-full bg-muted"><div className="bg-green-500" style={part(progress.done)} /><div className="bg-yellow-500" style={part(progress.inReview)} /><div className="bg-blue-500" style={part(progress.inProgress)} /></div>;
 }
 function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { roots: PluginSidebarThread[]; sections: readonly PluginSidebarSection[]; renderThread: (thread: PluginSidebarThread) => ReactElement; dropSectionId?: string }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedSections());
