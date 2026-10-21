@@ -575,6 +575,11 @@ function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { ro
   const { links: notionLinks, progress, setLink, refreshFromNotion } = useSectionNotion(sections.length > 0);
   const sdk = useSdk();
   const progressOf = (id: string) => (notionLinks[id] ? progress[id] : undefined);
+  // A refresh only starts the automation; keep spinning until new counts land (or 3 min pass).
+  const [refreshStartedAt, setRefreshStartedAt] = useState<number | null>(null);
+  const refreshing = (id: string) => refreshStartedAt !== null && Date.now() - refreshStartedAt < 180_000 && (progressOf(id)?.updatedAt ?? 0) < refreshStartedAt;
+  useEffect(() => { if (refreshStartedAt === null) return; const timer = setTimeout(() => setRefreshStartedAt(null), 180_000); return () => clearTimeout(timer); }, [refreshStartedAt]);
+  const runRefresh = () => { setRefreshStartedAt(Date.now()); void refreshFromNotion().then((result) => { if (!result.ok) { setRefreshStartedAt(null); toast.error(result.message); } }, (cause) => { setRefreshStartedAt(null); toast.error(cause instanceof Error ? cause.message : String(cause)); }); };
   const groups = sections.map((section) => ({ section, threads: roots.filter((thread) => thread.sectionId === section.id) })).filter((group) => group.threads.length > 0);
   const grouped = new Set(groups.flatMap((group) => group.threads.map((thread) => thread.id)));
   const toggle = (id: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); writeCollapsedSections(next); return next; });
@@ -587,18 +592,21 @@ function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { ro
           <RowContextMenu items={[
             { label: "Rename section…", action: () => setRenaming(section) },
             { label: notionLinks[section.id] ? "Change Notion project…" : "Link Notion project…", action: () => setLinking(section) },
-            ...(notionLinks[section.id] ? [{ label: "Open Notion project", action: () => { window.open(notionLinks[section.id], "_blank", "noopener"); } }, { label: "Refresh from Notion", action: () => { void refreshFromNotion().then((result) => (result.ok ? toast.success : toast.error)(result.message), (cause) => toast.error(cause instanceof Error ? cause.message : String(cause))); } }] : []),
+            ...(notionLinks[section.id] ? [{ label: "Open Notion project", action: () => { window.open(notionLinks[section.id], "_blank", "noopener"); } }, { label: "Refresh from Notion", action: runRefresh }] : []),
             { label: collapsed.has(section.id) ? "Expand section" : "Collapse section", action: () => toggle(section.id) },
             { label: `Archive ${threads.length} conversation${threads.length === 1 ? "" : "s"}…`, action: () => setConfirming({ section, threads, kind: "archive" }) },
             { label: "Delete section…", action: () => setConfirming({ section, threads, kind: "delete" }) },
           ]}>
-          <button type="button" className="flex w-full items-center gap-1 px-1 pt-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground" aria-expanded={!collapsed.has(section.id)} onClick={() => toggle(section.id)}>
+          <div className="group/section flex items-center">
+          <button type="button" className="flex min-w-0 flex-1 items-center gap-1 px-1 pt-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground" aria-expanded={!collapsed.has(section.id)} onClick={() => toggle(section.id)}>
             <span className={collapsed.has(section.id) ? "" : "rotate-90"}><TinyIcon name="chevron" /></span>
             <span className="min-w-0 flex-1 truncate">{section.name}</span>
             {notionLinks[section.id] ? <span title="Linked to a Notion project" className="text-[9px] normal-case opacity-70">N</span> : null}
             {progressOf(section.id) ? <ProgressLabel progress={progressOf(section.id)!} /> : null}
             <span className="tabular-nums">{threads.length}</span>
           </button>
+          {notionLinks[section.id] ? <button type="button" title="Refresh from Notion" aria-label={`Refresh ${section.name} from Notion`} disabled={refreshing(section.id)} onClick={runRefresh} className={`mr-1 mt-1.5 flex size-4 items-center justify-center rounded text-[11px] text-muted-foreground hover:text-foreground ${refreshing(section.id) ? "animate-spin opacity-100" : "opacity-0 group-hover/section:opacity-100 focus-visible:opacity-100"}`}>↻</button> : null}
+          </div>
           </RowContextMenu>
           {progressOf(section.id) && "total" in progressOf(section.id)! ? <ProgressBar progress={progressOf(section.id) as SectionCounts} /> : null}
           {collapsed.has(section.id) ? null : <ul>{threads.map(renderThread)}</ul>}
