@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
-import { experimental_NewThreadComposer as NewThreadComposer } from "@get-bb/plugin-sdk/app";
+import { experimental_NewThreadComposer as NewThreadComposer, useSdk } from "@get-bb/plugin-sdk/app";
 import type { NewThreadRequest, PluginSidebarSection } from "@get-bb/plugin-sdk/app";
 import type { BotMetadata } from "../contract";
 import { conversationDraftKey } from "../lib/worktree-launch";
 import { launchComposerSeeds } from "../lib/launch-preset";
+import { Input } from "./ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 
 export type ConversationTarget = {
@@ -26,6 +27,8 @@ export function ConversationDialog({ target, sections = [], onClose, onCreate }:
   const projectId = target.projectId;
   const seeds = target.kind === "fork" ? {} : launchComposerSeeds(target.bot.launchPreset);
   const [sectionId, setSectionId] = useState<string | null>(() => sections.find((section) => section.name.toLowerCase() === "random")?.id ?? null);
+  const [sectionDraft, setSectionDraft] = useState<string | null>(null);
+  const sdk = useSdk();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submitting = useRef(false);
@@ -43,14 +46,23 @@ export function ConversationDialog({ target, sections = [], onClose, onCreate }:
       <NewThreadComposer {...seeds} defaultProjectId={projectId} defaultEnvironment={target.environment} layout="document" focusRequest={1} draftKey={conversationDraftKey({ botId: target.bot.id, kind: target.kind, makeMain: target.makeMain, projectId, environment: target.environment })} onSubmit={async (request) => {
         if (submitting.current) throw new Error("A conversation is already being created.");
         submitting.current = true; setPending(true); setError(null);
-        try { await onCreate(request, sectionId); }
+        try {
+          const name = sectionDraft?.trim();
+          if (sectionDraft !== null && !name) throw new Error("Name the new section or pick an existing one.");
+          const targetSectionId = name ? (await sdk.threadSections.create({ name })).id : sectionId;
+          await onCreate(request, targetSectionId);
+        }
         catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); throw cause; }
         finally { submitting.current = false; setPending(false); }
       }} />
-      {sections.length ? <label className="flex items-center gap-2 text-xs text-muted-foreground">Section<select className="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground" value={sectionId ?? ""} onChange={(event) => setSectionId(event.target.value || null)}>
+      <label className="flex items-center gap-2 text-xs text-muted-foreground">Section<select aria-label="Section" className="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground" value={sectionDraft !== null ? "__new_section__" : sectionId ?? ""} onChange={(event) => {
+        if (event.target.value === "__new_section__") { setSectionDraft(""); return; }
+        setSectionDraft(null); setSectionId(event.target.value || null);
+      }}>
         <option value="">No section</option>
         {sections.map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}
-      </select></label> : null}
+        <option value="__new_section__">New section…</option>
+      </select>{sectionDraft !== null ? <Input autoFocus className="h-7 w-48 text-xs" placeholder="Section name" value={sectionDraft} onChange={(event) => setSectionDraft(event.target.value)} /> : null}</label>
       {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
       {pending ? <p role="status" className="text-xs text-muted-foreground">Creating conversation…</p> : null}
     </DialogContent>

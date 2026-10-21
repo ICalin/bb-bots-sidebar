@@ -131,7 +131,7 @@ describe("new conversation in worktree", () => {
     fireEvent.contextMenu(slot.getByText("Conversation personal-topic"));
     fireEvent.click(await slot.findByRole("menuitem", { name: "New conversation in worktree…" }));
     const dialog = await slot.findByRole("dialog", { name: "New conversation in worktree" });
-    expect(dialog.querySelector("select")).toBeNull();
+    expect(dialog.querySelector("select:not([aria-label=\"Section\"])")).toBeNull();
     expect(slot.queryByRole("button", { name: "Continue" })).toBeNull();
     expect(composerProps().defaultProjectId).toBe("project");
     expect(composerProps().defaultEnvironment).toEqual(fresh("origin-host"));
