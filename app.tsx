@@ -43,6 +43,8 @@ import { BotActivityBadge } from "@/components/bot-activity-badge";
 import { ConversationArchiveButton } from "@/components/conversation-archive-button";
 import { PrBadge } from "@/components/pr-badge";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { SectionDialog } from "@/components/section-dialog";
+import { onSectionNotionLinksChange, readSectionNotionLinks, setSectionNotionLink } from "./lib/section-notion-links";
 import { BotNewConversationButton } from "@/components/bot-new-conversation-button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ResizableChats } from "@/components/resizable-chats";
@@ -346,7 +348,7 @@ function ConversationContextMenu({ children, thread, items = [], dragging }: {
       }))}
     >{children}</ThreadActionsContextMenu>
     {renaming ? <RenameConversationDialog title={thread.title ?? thread.titleFallback ?? "Untitled conversation"} onSave={async (title) => { await sdk.threads.update({ threadId: thread.id, title }); }} onClose={() => setRenaming(false)} /> : null}
-    {creatingSection ? <RenameConversationDialog title="" heading="New section" description="Create a section and move this conversation into it." onSave={async (name) => { const section = await sdk.threadSections.create({ name }); await sdk.threads.update({ threadId: thread.id, sectionId: section.id }); }} onClose={() => setCreatingSection(false)} /> : null}
+    {creatingSection ? <SectionDialog heading="New section" description="Create a section and move this conversation into it." onSave={async ({ name, notionUrl }) => { const section = await sdk.threadSections.create({ name }); setSectionNotionLink(section.id, notionUrl); await sdk.threads.update({ threadId: thread.id, sectionId: section.id }); }} onClose={() => setCreatingSection(false)} /> : null}
   </>;
 }
 
@@ -550,6 +552,9 @@ function writeCollapsedSections(ids: Set<string>) {
 function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { roots: PluginSidebarThread[]; sections: readonly PluginSidebarSection[]; renderThread: (thread: PluginSidebarThread) => ReactElement; dropSectionId?: string }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedSections());
   const [renaming, setRenaming] = useState<PluginSidebarSection | null>(null);
+  const [linking, setLinking] = useState<PluginSidebarSection | null>(null);
+  const [notionLinks, setNotionLinks] = useState(readSectionNotionLinks);
+  useEffect(() => onSectionNotionLinksChange(() => setNotionLinks(readSectionNotionLinks())), []);
   const sdk = useSdk();
   const groups = sections.map((section) => ({ section, threads: roots.filter((thread) => thread.sectionId === section.id) })).filter((group) => group.threads.length > 0);
   const grouped = new Set(groups.flatMap((group) => group.threads.map((thread) => thread.id)));
@@ -562,6 +567,8 @@ function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { ro
         <div key={section.id} className={dropSectionId === section.id ? "thread-section-group rounded-md bg-state-hover" : "thread-section-group"} data-section-drop-target={section.id}>
           <RowContextMenu items={[
             { label: "Rename section…", action: () => setRenaming(section) },
+            { label: notionLinks[section.id] ? "Change Notion project…" : "Link Notion project…", action: () => setLinking(section) },
+            ...(notionLinks[section.id] ? [{ label: "Open Notion project", action: () => { window.open(notionLinks[section.id], "_blank", "noopener"); } }] : []),
             { label: collapsed.has(section.id) ? "Expand section" : "Collapse section", action: () => toggle(section.id) },
             { label: `Archive ${threads.length} conversation${threads.length === 1 ? "" : "s"}…`, action: () => setConfirming({ section, threads, kind: "archive" }) },
             { label: "Delete section…", action: () => setConfirming({ section, threads, kind: "delete" }) },
@@ -569,6 +576,7 @@ function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { ro
           <button type="button" className="flex w-full items-center gap-1 px-1 pt-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground" aria-expanded={!collapsed.has(section.id)} onClick={() => toggle(section.id)}>
             <span className={collapsed.has(section.id) ? "" : "rotate-90"}><TinyIcon name="chevron" /></span>
             <span className="min-w-0 flex-1 truncate">{section.name}</span>
+            {notionLinks[section.id] ? <span title="Linked to a Notion project" className="text-[9px] normal-case opacity-70">N</span> : null}
             <span className="tabular-nums">{threads.length}</span>
           </button>
           </RowContextMenu>
@@ -584,6 +592,7 @@ function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { ro
           if (confirming.kind === "archive") await Promise.all(confirming.threads.map((thread) => sdk.threads.archive({ threadId: thread.id })));
           else await sdk.threadSections.delete({ id: confirming.section.id });
         }} /> : null}
+      {linking ? <SectionDialog showName={false} heading={`Notion project for "${linking.name}"`} description="Link the Notion project this section tracks. Leave empty to unlink." notionUrl={notionLinks[linking.id] ?? ""} onSave={async ({ notionUrl }) => { setSectionNotionLink(linking.id, notionUrl); }} onClose={() => setLinking(null)} /> : null}
       {renaming ? <RenameConversationDialog title={renaming.name} heading="Rename section" description="Choose the section name shown in the sidebar." onSave={async (name) => { await sdk.threadSections.update({ id: renaming.id, name }); }} onClose={() => setRenaming(null)} /> : null}
     </>
   );

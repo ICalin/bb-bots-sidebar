@@ -5,6 +5,7 @@ import type { BotMetadata } from "../contract";
 import { conversationDraftKey } from "../lib/worktree-launch";
 import { launchComposerSeeds } from "../lib/launch-preset";
 import { Input } from "./ui/input";
+import { isNotionUrl, setSectionNotionLink } from "../lib/section-notion-links";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 
 export type ConversationTarget = {
@@ -28,6 +29,7 @@ export function ConversationDialog({ target, sections = [], onClose, onCreate }:
   const seeds = target.kind === "fork" ? {} : launchComposerSeeds(target.bot.launchPreset);
   const [sectionId, setSectionId] = useState<string | null>(() => sections.find((section) => section.name.toLowerCase() === "random")?.id ?? null);
   const [sectionDraft, setSectionDraft] = useState<string | null>(null);
+  const [notionDraft, setNotionDraft] = useState("");
   const sdk = useSdk();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +51,11 @@ export function ConversationDialog({ target, sections = [], onClose, onCreate }:
         try {
           const name = sectionDraft?.trim();
           if (sectionDraft !== null && !name) throw new Error("Name the new section or pick an existing one.");
-          const targetSectionId = name ? (await sdk.threadSections.create({ name })).id : sectionId;
+          const notionUrl = notionDraft.trim();
+          if (name && notionUrl && !isNotionUrl(notionUrl)) throw new Error("The Notion project must be a Notion page link.");
+          const created = name ? await sdk.threadSections.create({ name }) : null;
+          if (created) setSectionNotionLink(created.id, notionUrl || null);
+          const targetSectionId = created ? created.id : sectionId;
           await onCreate(request, targetSectionId);
         }
         catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); throw cause; }
@@ -62,7 +68,7 @@ export function ConversationDialog({ target, sections = [], onClose, onCreate }:
         <option value="">No section</option>
         {sections.map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}
         <option value="__new_section__">New section…</option>
-      </select>{sectionDraft !== null ? <Input autoFocus className="h-7 w-48 text-xs" placeholder="Section name" value={sectionDraft} onChange={(event) => setSectionDraft(event.target.value)} /> : null}</label>
+      </select>{sectionDraft !== null ? <Input autoFocus className="h-7 w-48 text-xs" placeholder="Section name" value={sectionDraft} onChange={(event) => setSectionDraft(event.target.value)} /> : null}{sectionDraft !== null ? <Input className="h-7 w-64 text-xs" placeholder="Notion project link (optional)" value={notionDraft} onChange={(event) => setNotionDraft(event.target.value)} /> : null}</label>
       {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
       {pending ? <p role="status" className="text-xs text-muted-foreground">Creating conversation…</p> : null}
     </DialogContent>
