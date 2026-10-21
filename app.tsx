@@ -415,7 +415,7 @@ function ThreadRow({ thread, siblings, childrenByParent, activePath, navigate, a
   ]}>
     <div draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/x-bb-thread-id", thread.id); }} className="thread-row flex min-h-7 items-center rounded-md text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground" aria-current={activeThreadId === thread.id ? "page" : undefined} data-active-descendant={!branch.expanded && branch.containsActive}>
       <a href={thread.href} {...split.splitProps} onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); reorderDrag.begin(thread, event); }} ref={branch.rowRef} role="link" tabIndex={0} aria-current={activeThreadId === thread.id ? "page" : undefined} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); } }} data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id} aria-keyshortcuts={shortcut?.ariaKeyshortcuts} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-1 pr-1" onClick={(event) => { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); }}>
-        <SidebarConversationStatus thread={thread} /><span className="min-w-0 flex-1 truncate"><ThreadTitle threadId={thread.id} /></span>{shortcut ? <kbd className="shrink-0 rounded bg-muted px-1 text-[9px]">{shortcut.label}</kbd> : null}
+        <SidebarConversationStatus thread={thread} /><span className="min-w-0 flex-1 truncate"><TaskTitle thread={thread} /></span>{shortcut ? <kbd className="shrink-0 rounded bg-muted px-1 text-[9px]">{shortcut.label}</kbd> : null}
       </a>
       {thread.environment?.isWorktree ? <PrBadge threadId={thread.id} /> : null}
       <ConversationArchiveButton thread={thread} />
@@ -540,6 +540,14 @@ function readSortByActivity(): boolean {
 
 function byLatestActivity(threads: PluginSidebarThread[]): PluginSidebarThread[] {
   return [...threads].sort((a, b) => b.latestAttentionAt - a.latestAttentionAt || b.updatedAt - a.updatedAt);
+}
+
+// Ticket threads ("TASK-123 Name") get the ticket id as a chip so the name reads on its own.
+const TASK_TITLE = /^\[?(TASK-\d+)\]?\s*(.*)$/i;
+function TaskTitle({ thread }: { thread: PluginSidebarThread }) {
+  const match = TASK_TITLE.exec(thread.displayTitle ?? "");
+  if (!match) return <ThreadTitle threadId={thread.id} />;
+  return <><span className="mr-1.5 rounded border border-sky-500/30 bg-sky-500/15 px-1 py-px font-mono text-[10px] font-semibold text-sky-300">{match[1]!.toUpperCase()}</span><span className="text-foreground/90">{match[2]}</span></>;
 }
 
 const COLLAPSED_SECTIONS_KEY = "bots-sidebar:collapsed-sections";
@@ -681,7 +689,7 @@ function RecentRow({
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
-            <span className="min-w-0 flex-1 truncate text-[10px] font-medium leading-3 text-foreground"><ThreadTitle threadId={thread.id} /></span>{shortcut ? <kbd className="shrink-0 rounded bg-muted px-1 text-[9px]">{shortcut.label}</kbd> : null}
+            <span className="min-w-0 flex-1 truncate text-[10px] font-medium leading-3 text-foreground"><TaskTitle thread={thread} /></span>{shortcut ? <kbd className="shrink-0 rounded bg-muted px-1 text-[9px]">{shortcut.label}</kbd> : null}
           </span>
           <span className="block truncate text-[8px] leading-[10px] text-muted-foreground">{detail}</span>
         </span>
