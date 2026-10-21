@@ -901,7 +901,9 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
       run(() => editBot(bot)); return;
     }
     const hostId = worktreeLaunchHostId(bot, thread, main);
-    const environment = kind === "project" ? projectLaunchEnvironment(hostId) : worktreeLaunchEnvironment(hostId);
+    // "In project" follows the bot's workspace preset, so a worktree default applies here too.
+    const useWorktree = kind === "worktree" || bot.launchPreset?.workspace === "worktree";
+    const environment = useWorktree ? worktreeLaunchEnvironment(hostId) : projectLaunchEnvironment(hostId);
     setConversation({ bot, kind, projectId, environment, makeMain: false });
   }
 

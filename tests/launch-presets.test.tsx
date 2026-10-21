@@ -116,12 +116,12 @@ it.each([false, true])("seeds fresh conversations without overriding ownership o
   expect(slot.inspection.rpcCalls).toContainEqual({ method: "conversation_create", input: { botId: bot.id, request: chosen, makeMain: false } });
 });
 
-it("keeps an explicit checkout action a checkout even when the bot prefers worktrees", async () => {
+it("starts project conversations in a worktree when the bot prefers worktrees", async () => {
   const { slot } = await mount(preset, true);
   fireEvent.contextMenu(slot.getByText(bot.name));
   fireEvent.click(await slot.findByRole("menuitem", { name: "New conversation in project…" }));
   await slot.findByRole("dialog", { name: "New conversation in project" });
-  expect(props().defaultEnvironment).toMatchObject({ workspace: { type: "unmanaged", path: null } });
+  expect(props().defaultEnvironment).toMatchObject({ workspace: { type: "managed-worktree" } });
   expect(props().defaultModel).toBe("review-model");
 });
 
