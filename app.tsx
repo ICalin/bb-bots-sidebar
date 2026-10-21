@@ -20,6 +20,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import type {
   NewThreadRequest,
+  PluginSidebarSection,
   PluginSidebarThread,
   BbNavigate,
   PluginThreadListProps,
@@ -439,6 +440,7 @@ function BotGroup({
   onDragEnd,
   dragging,
   conversationDropTarget,
+  threadSections,
 }: {
   metadata: BotMetadata;
   ownedProjectNames: string[];
@@ -464,6 +466,7 @@ function BotGroup({
   onDragEnd: () => void;
   dragging: boolean;
   conversationDropTarget: "first" | "last" | null;
+  threadSections: readonly PluginSidebarSection[];
 }) {
   const { childrenByParent, activePath, roots } = useMemo(() => orderedBotConversationTree(threads, metadata.threadOrder, activeThreadId), [threads, metadata.threadOrder, activeThreadId]);
   const conversationsId = useId();
@@ -509,10 +512,33 @@ function BotGroup({
       </div>
       </RowContextMenu>
       <div id={conversationsId} role="group" aria-label={`Conversations for ${metadata.name}`} className="bot-topics" hidden={!topicsVisible}>
-        {topicsVisible ? <ul>{roots.map(renderThread)}</ul> : null}
+        {topicsVisible ? <SectionedThreads roots={roots} sections={threadSections} renderThread={renderThread} /> : null}
       </div>
       {reorderDrag.drag ? createPortal(<div {...portalScope} ref={reorderDrag.ghostRef} className="conversation-drag-ghost rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md" aria-hidden="true"><div className="truncate">{reorderDrag.drag.title}</div><div className="text-[10px] text-muted-foreground">{reorderDrag.target ? reorderDrag.target.botRow ? "Make top conversation" : reorderDrag.target.position === "inside" ? "Nest conversation" : "Reorder conversation" : "Drag above/below a sibling · Shift to nest"}</div></div>, document.body) : null}
     </section>
+  );
+}
+
+// Unsectioned conversations stay on top; the rest are grouped under their bb thread section.
+function SectionedThreads({ roots, sections, renderThread }: { roots: PluginSidebarThread[]; sections: readonly PluginSidebarSection[]; renderThread: (thread: PluginSidebarThread) => ReactElement }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const groups = sections.map((section) => ({ section, threads: roots.filter((thread) => thread.sectionId === section.id) })).filter((group) => group.threads.length > 0);
+  const grouped = new Set(groups.flatMap((group) => group.threads.map((thread) => thread.id)));
+  const toggle = (id: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  return (
+    <>
+      <ul>{roots.filter((thread) => !grouped.has(thread.id)).map(renderThread)}</ul>
+      {groups.map(({ section, threads }) => (
+        <div key={section.id} className="thread-section-group">
+          <button type="button" className="flex w-full items-center gap-1 px-1 pt-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground" aria-expanded={!collapsed.has(section.id)} onClick={() => toggle(section.id)}>
+            <span className={collapsed.has(section.id) ? "" : "rotate-90"}><TinyIcon name="chevron" /></span>
+            <span className="min-w-0 flex-1 truncate">{section.name}</span>
+            <span className="tabular-nums">{threads.length}</span>
+          </button>
+          {collapsed.has(section.id) ? null : <ul>{threads.map(renderThread)}</ul>}
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -849,7 +875,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
                 onNewInWorktree={(thread) => openLinked(metadata, "worktree", thread)}
                 onFork={(thread) => openFork(metadata, thread)} onNest={nestConversation}
                 onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", botId); setDraggedBotId(botId); }}
-                onDragEnd={() => setDraggedBotId(null)} dragging={draggedBotId === botId} conversationDropTarget={outsideDropTarget?.botId === botId ? outsideDropTarget.placeFirst ? "first" : "last" : null} onNavigate={onNavigate} /></div>;
+                onDragEnd={() => setDraggedBotId(null)} dragging={draggedBotId === botId} threadSections={sidebar.sections} conversationDropTarget={outsideDropTarget?.botId === botId ? outsideDropTarget.placeFirst ? "first" : "last" : null} onNavigate={onNavigate} /></div>;
             })}</div>
           </section>)}
         </div>
