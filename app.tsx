@@ -470,7 +470,8 @@ function BotGroup({
 }) {
   const { childrenByParent, activePath, roots } = useMemo(() => orderedBotConversationTree(threads, metadata.threadOrder, activeThreadId), [threads, metadata.threadOrder, activeThreadId]);
   const conversationsId = useId();
-  const reorderDrag = useConversationReorder(threads, onReorder, onNest, metadata.id, roots[0]?.id);
+  const sdk = useSdk();
+  const reorderDrag = useConversationReorder(threads, onReorder, onNest, metadata.id, roots[0]?.id, (threadId, sectionId) => { void sdk.threads.update({ threadId, sectionId }); });
   const dropToTop = conversationDropTarget === "first" || Boolean(reorderDrag.target?.botRow);
   const dropHint = conversationDropTarget === "first" ? "Make first" : conversationDropTarget === "last" ? "Add to end" : dropToTop ? "Drop to make top conversation" : null;
   const portalScope = usePortalScopeProps();
@@ -512,24 +513,24 @@ function BotGroup({
       </div>
       </RowContextMenu>
       <div id={conversationsId} role="group" aria-label={`Conversations for ${metadata.name}`} className="bot-topics" hidden={!topicsVisible}>
-        {topicsVisible ? <SectionedThreads roots={roots} sections={threadSections} renderThread={renderThread} /> : null}
+        {topicsVisible ? <SectionedThreads roots={roots} sections={threadSections} renderThread={renderThread} dropSectionId={reorderDrag.target?.position === "section" ? reorderDrag.target.sectionId ?? "" : undefined} /> : null}
       </div>
-      {reorderDrag.drag ? createPortal(<div {...portalScope} ref={reorderDrag.ghostRef} className="conversation-drag-ghost rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md" aria-hidden="true"><div className="truncate">{reorderDrag.drag.title}</div><div className="text-[10px] text-muted-foreground">{reorderDrag.target ? reorderDrag.target.botRow ? "Make top conversation" : reorderDrag.target.position === "inside" ? "Nest conversation" : "Reorder conversation" : "Drag above/below a sibling · Shift to nest"}</div></div>, document.body) : null}
+      {reorderDrag.drag ? createPortal(<div {...portalScope} ref={reorderDrag.ghostRef} className="conversation-drag-ghost rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md" aria-hidden="true"><div className="truncate">{reorderDrag.drag.title}</div><div className="text-[10px] text-muted-foreground">{reorderDrag.target ? reorderDrag.target.botRow ? "Make top conversation" : reorderDrag.target.position === "section" ? "Move to section" : reorderDrag.target.position === "inside" ? "Nest conversation" : "Reorder conversation" : "Drag above/below a sibling · Shift to nest"}</div></div>, document.body) : null}
     </section>
   );
 }
 
 // Unsectioned conversations stay on top; the rest are grouped under their bb thread section.
-function SectionedThreads({ roots, sections, renderThread }: { roots: PluginSidebarThread[]; sections: readonly PluginSidebarSection[]; renderThread: (thread: PluginSidebarThread) => ReactElement }) {
+function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { roots: PluginSidebarThread[]; sections: readonly PluginSidebarSection[]; renderThread: (thread: PluginSidebarThread) => ReactElement; dropSectionId?: string }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const groups = sections.map((section) => ({ section, threads: roots.filter((thread) => thread.sectionId === section.id) })).filter((group) => group.threads.length > 0);
   const grouped = new Set(groups.flatMap((group) => group.threads.map((thread) => thread.id)));
   const toggle = (id: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   return (
     <>
-      <ul>{roots.filter((thread) => !grouped.has(thread.id)).map(renderThread)}</ul>
+      <ul data-section-drop-target="" className={dropSectionId === "" ? "min-h-2 rounded-md bg-state-hover" : "min-h-2"}>{roots.filter((thread) => !grouped.has(thread.id)).map(renderThread)}</ul>
       {groups.map(({ section, threads }) => (
-        <div key={section.id} className="thread-section-group">
+        <div key={section.id} className={dropSectionId === section.id ? "thread-section-group rounded-md bg-state-hover" : "thread-section-group"} data-section-drop-target={section.id}>
           <button type="button" className="flex w-full items-center gap-1 px-1 pt-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground" aria-expanded={!collapsed.has(section.id)} onClick={() => toggle(section.id)}>
             <span className={collapsed.has(section.id) ? "" : "rotate-90"}><TinyIcon name="chevron" /></span>
             <span className="min-w-0 flex-1 truncate">{section.name}</span>
