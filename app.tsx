@@ -41,6 +41,8 @@ import { RenameConversationDialog } from "@/components/rename-conversation-dialo
 import { SidebarConversationStatus } from "@/components/sidebar-conversation-status";
 import { BotActivityBadge } from "@/components/bot-activity-badge";
 import { ConversationArchiveButton } from "@/components/conversation-archive-button";
+import { PrBadge } from "@/components/pr-badge";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { BotNewConversationButton } from "@/components/bot-new-conversation-button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ResizableChats } from "@/components/resizable-chats";
@@ -411,6 +413,7 @@ function ThreadRow({ thread, siblings, childrenByParent, activePath, navigate, a
       <a href={thread.href} {...split.splitProps} onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); reorderDrag.begin(thread, event); }} ref={branch.rowRef} role="link" tabIndex={0} aria-current={activeThreadId === thread.id ? "page" : undefined} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); } }} data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id} aria-keyshortcuts={shortcut?.ariaKeyshortcuts} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-1 pr-1" onClick={(event) => { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); }}>
         <SidebarConversationStatus thread={thread} /><span className="min-w-0 flex-1 truncate"><ThreadTitle threadId={thread.id} /></span>{shortcut ? <kbd className="shrink-0 rounded bg-muted px-1 text-[9px]">{shortcut.label}</kbd> : null}
       </a>
+      <PrBadge threadId={thread.id} />
       <ConversationArchiveButton thread={thread} />
       <BranchToggle title={title} count={children.length} expanded={branch.expanded} childrenId={branch.childrenId} onToggle={branch.toggle} />
     </div>
@@ -522,20 +525,34 @@ function BotGroup({
   );
 }
 
+const COLLAPSED_SECTIONS_KEY = "bots-sidebar:collapsed-sections";
+function readCollapsedSections(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSED_SECTIONS_KEY) ?? "[]") as string[]); } catch { return new Set(); }
+}
+function writeCollapsedSections(ids: Set<string>) {
+  try { localStorage.setItem(COLLAPSED_SECTIONS_KEY, JSON.stringify([...ids])); } catch { /* storage unavailable */ }
+}
+
 // Unsectioned conversations stay on top; the rest are grouped under their bb thread section.
 function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { roots: PluginSidebarThread[]; sections: readonly PluginSidebarSection[]; renderThread: (thread: PluginSidebarThread) => ReactElement; dropSectionId?: string }) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedSections());
   const [renaming, setRenaming] = useState<PluginSidebarSection | null>(null);
   const sdk = useSdk();
   const groups = sections.map((section) => ({ section, threads: roots.filter((thread) => thread.sectionId === section.id) })).filter((group) => group.threads.length > 0);
   const grouped = new Set(groups.flatMap((group) => group.threads.map((thread) => thread.id)));
-  const toggle = (id: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const toggle = (id: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); writeCollapsedSections(next); return next; });
+  const [confirming, setConfirming] = useState<{ section: PluginSidebarSection; threads: PluginSidebarThread[]; kind: "archive" | "delete" } | null>(null);
   return (
     <>
       <ul data-section-drop-target="" className={dropSectionId === "" ? "min-h-2 rounded-md bg-state-hover" : "min-h-2"}>{roots.filter((thread) => !grouped.has(thread.id)).map(renderThread)}</ul>
       {groups.map(({ section, threads }) => (
         <div key={section.id} className={dropSectionId === section.id ? "thread-section-group rounded-md bg-state-hover" : "thread-section-group"} data-section-drop-target={section.id}>
-          <RowContextMenu items={[{ label: "Rename section…", action: () => setRenaming(section) }]}>
+          <RowContextMenu items={[
+            { label: "Rename section…", action: () => setRenaming(section) },
+            { label: collapsed.has(section.id) ? "Expand section" : "Collapse section", action: () => toggle(section.id) },
+            { label: `Archive ${threads.length} conversation${threads.length === 1 ? "" : "s"}…`, action: () => setConfirming({ section, threads, kind: "archive" }) },
+            { label: "Delete section…", action: () => setConfirming({ section, threads, kind: "delete" }) },
+          ]}>
           <button type="button" className="flex w-full items-center gap-1 px-1 pt-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground" aria-expanded={!collapsed.has(section.id)} onClick={() => toggle(section.id)}>
             <span className={collapsed.has(section.id) ? "" : "rotate-90"}><TinyIcon name="chevron" /></span>
             <span className="min-w-0 flex-1 truncate">{section.name}</span>
@@ -545,6 +562,15 @@ function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { ro
           {collapsed.has(section.id) ? null : <ul>{threads.map(renderThread)}</ul>}
         </div>
       ))}
+      {confirming ? <ConfirmDialog
+        heading={confirming.kind === "archive" ? `Archive "${confirming.section.name}"?` : `Delete section "${confirming.section.name}"?`}
+        description={confirming.kind === "archive" ? `Archives all ${confirming.threads.length} conversations in this section. You can unarchive them later.` : "The conversations stay; they just leave this section."}
+        confirmLabel={confirming.kind === "archive" ? "Archive all" : "Delete section"}
+        onClose={() => setConfirming(null)}
+        onConfirm={async () => {
+          if (confirming.kind === "archive") await Promise.all(confirming.threads.map((thread) => sdk.threads.archive({ threadId: thread.id })));
+          else await sdk.threadSections.delete({ id: confirming.section.id });
+        }} /> : null}
       {renaming ? <RenameConversationDialog title={renaming.name} heading="Rename section" description="Choose the section name shown in the sidebar." onSave={async (name) => { await sdk.threadSections.update({ id: renaming.id, name }); }} onClose={() => setRenaming(null)} /> : null}
     </>
   );
@@ -609,6 +635,7 @@ function RecentRow({
           <span className="block truncate text-[8px] leading-[10px] text-muted-foreground">{detail}</span>
         </span>
       </a>
+      <PrBadge threadId={thread.id} />
       <ConversationArchiveButton thread={thread} />
       <BranchToggle title={title} count={children.length} expanded={branch.expanded} childrenId={branch.childrenId} onToggle={branch.toggle} />
       </div>
