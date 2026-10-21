@@ -330,19 +330,21 @@ function ConversationContextMenu({ children, thread, items = [], dragging }: {
   dragging?: boolean;
 }) {
   const [renaming, setRenaming] = useState(false);
+  const [creatingSection, setCreatingSection] = useState(false);
   const sdk = useSdk();
   return <>
     <ThreadActionsContextMenu
       thread={threadActionTarget(thread)}
       dragging={dragging}
       requestRename={() => setRenaming(true)}
-      inline={items.map((item) => ({
+      inline={[...items, { label: "New section…", action: () => setCreatingSection(true) }].map((item) => ({
         key: item.label,
         group: "00-bots",
         action: { label: item.label, icon: "MessageCircle", disabled: item.disabled, run: item.action },
       }))}
     >{children}</ThreadActionsContextMenu>
     {renaming ? <RenameConversationDialog title={thread.title ?? thread.titleFallback ?? "Untitled conversation"} onSave={async (title) => { await sdk.threads.update({ threadId: thread.id, title }); }} onClose={() => setRenaming(false)} /> : null}
+    {creatingSection ? <RenameConversationDialog title="" heading="New section" description="Create a section and move this conversation into it." onSave={async (name) => { const section = await sdk.threadSections.create({ name }); await sdk.threads.update({ threadId: thread.id, sectionId: section.id }); }} onClose={() => setCreatingSection(false)} /> : null}
   </>;
 }
 
