@@ -83,7 +83,7 @@ describe("Bots sidebar", () => {
     const { slot } = await mount(true);
     fireEvent.contextMenu(slot.getByText("Conversation chat"));
     const menu = await slot.findByRole("menu");
-    expect(Array.from(menu.querySelectorAll('[role="menuitem"]'), (item) => item.textContent)).toEqual(["Rename…", "Open in split", "Mark as unread", "Archive conversation", "Assign to bot…"]);
+    expect(Array.from(menu.querySelectorAll('[role="menuitem"]'), (item) => item.textContent)).toEqual(["Rename…", "Open in split", "Mark as unread", "Archive conversation", "Assign to bot…", "New section…"]);
     fireEvent.click(slot.getByRole("menuitem", { name: "Archive conversation" }));
     expect(slot.nativeActionCalls).toContainEqual({ key: "bb--core/archive", threadId: "chat" });
   });
