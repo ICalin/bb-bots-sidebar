@@ -562,14 +562,16 @@ function writeCollapsedSections(ids: Set<string>) {
 type SectionCounts = Extract<SectionProgress, { total: number }>;
 function progressTitle(p: SectionProgress) {
   const ago = Math.max(0, Math.round((Date.now() - p.updatedAt) / 60000));
-  if (p.error) return `Notion refresh failed: ${p.error}`;
+  const failed = p.error ? `Last Notion refresh failed: ${p.error}` : "";
+  if (!("total" in p)) return failed;
   const c = p as SectionCounts;
-  return `${c.done} done · ${c.inReview} in review · ${c.inProgress} in progress · ${c.todo} to do · you ${c.mine}, others ${c.others} · updated ${ago < 1 ? "just now" : ago < 60 ? `${ago} min ago` : ago < 1440 ? `${Math.round(ago / 60)} h ago` : `${Math.round(ago / 1440)} d ago`}`;
+  return `${failed ? `${failed}\n` : ""}${c.done} done · ${c.inReview} in review · ${c.inProgress} in progress · ${c.todo} to do · you ${c.mine}, others ${c.others} · updated ${ago < 1 ? "just now" : ago < 60 ? `${ago} min ago` : ago < 1440 ? `${Math.round(ago / 60)} h ago` : `${Math.round(ago / 1440)} d ago`}`;
 }
 function ProgressLabel({ progress }: { progress: SectionProgress }) {
-  if (progress.error) return <span title={progressTitle(progress)} className="text-[9px] normal-case text-destructive">!</span>;
+  const warn = progress.error ? <span className="text-[9px] normal-case text-amber-500">!</span> : null;
+  if (!("total" in progress)) return <span title={progressTitle(progress)} className="text-[9px] normal-case text-destructive">!</span>;
   const c = progress as SectionCounts;
-  return <span title={progressTitle(progress)} className="tabular-nums">{c.done}/{c.total}</span>;
+  return <span title={progressTitle(progress)} className="tabular-nums">{c.done}/{c.total}{warn}</span>;
 }
 function ProgressBar({ progress }: { progress: SectionCounts }) {
   if (!progress.total) return null;

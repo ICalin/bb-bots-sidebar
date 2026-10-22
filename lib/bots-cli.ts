@@ -111,7 +111,11 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, resolveOwner: 
           if (argv[1] !== "set" || argv.length !== 3) throw new Error(`Usage: bb bots notion-progress set '<json>'\n${USAGE}`);
           const input = progressInputSchema.parse(JSON.parse(argv[2]!));
           const now = Date.now(), current = store.notionProgress();
-          for (const [sectionId, value] of Object.entries(input)) current[sectionId] = { ...value, updatedAt: now };
+          for (const [sectionId, value] of Object.entries(input)) {
+            const previous = current[sectionId];
+            // A failed refresh keeps the last good counts (and their timestamp) and only adds the error.
+            current[sectionId] = "error" in value && previous && "total" in previous ? { ...previous, error: value.error } : { ...value, updatedAt: now };
+          }
           store.saveNotionProgress(current); publish();
           return { exitCode: 0, stdout: `Updated progress for ${Object.keys(input).length} section(s).` };
         }
