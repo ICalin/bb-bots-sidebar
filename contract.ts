@@ -87,7 +87,7 @@ export const stateMutationToolSchema = z.object({
 export const stateMutationResultSchema = z.object({ botId: id, target: stateTargetSchema, changed: z.boolean(), revision: z.number(), state: z.json() }).strict();
 
 export const rpcContract = defineRpcContract({
-  bots_list: { input: z.null(), output: z.object({ bots: z.array(metadataSchema), hosts: z.array(hostSchema), sections: z.array(sectionSchema), projects: z.array(projectSchema), threadBindings: z.array(z.object({ threadId: id, botId: id }).strict()), warnings: z.array(z.string()), personalProjectId: id, projectOwners: z.array(projectOwnerSchema).optional() }).strict() },
+  bots_list: { input: z.null(), output: z.object({ bots: z.array(metadataSchema), hosts: z.array(hostSchema), sections: z.array(sectionSchema), projects: z.array(projectSchema), threadBindings: z.array(z.object({ threadId: id, botId: id }).strict()), warnings: z.array(z.string()), personalProjectId: id, projectOwners: z.array(projectOwnerSchema).optional(), completions: z.array(z.object({ threadId: id, completedAt: z.number() }).strict()).optional() }).strict() },
   project_browse: { input: projectBrowseInputSchema, output: projectBrowseOutputSchema },
   project_create: { input: projectCreateInputSchema, output: projectSchema },
   bot_create: { input: z.object({ ...editFields, hostId: id, launchPreset: launchPresetSchema.nullable().optional() }).strict(), output: metadataSchema },
@@ -101,6 +101,7 @@ export const rpcContract = defineRpcContract({
   main_set: { input: z.object({ botId: id, threadId: id }).strict(), output: metadataSchema },
   conversation_create: { input: z.object({ botId: id, request: newThreadRequestSchema, makeMain: z.boolean().optional() }).strict(), output: z.object({ threadId: id }).strict() },
   conversation_fork: { input: z.object({ botId: id, sourceThreadId: id, request: newThreadRequestSchema }).strict(), output: z.object({ threadId: id }).strict() },
+  conversation_complete: { input: z.object({ threadId: id, completed: z.boolean() }).strict(), output: z.object({ ok: z.literal(true), threadIds: z.array(id) }).strict() },
   conversation_nest: { input: z.object({ threadId: id, parentThreadId: id }).strict(), output: z.object({ ok: z.literal(true) }).strict() },
   conversation_reorder: { input: z.object({ botId: id, threadId: id, targetThreadId: id, position: z.enum(["before", "after"]) }).strict(), output: z.object({ ok: z.literal(true) }).strict() },
   conversation_assign: { input: z.object({ botId: id, threadId: id, placeFirst: z.boolean().optional() }).strict(), output: z.object({ ok: z.literal(true) }).strict() },

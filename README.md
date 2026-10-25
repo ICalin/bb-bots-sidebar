@@ -187,12 +187,21 @@ in bot state.
   added conversation into view. Hold Shift anywhere on the row to
   put it first instead (also unfolding the list). Drop an
   existing top-level conversation on its own bot row to move it to the top.
-- Hover a conversation row to reveal its archive button, also available on
-  keyboard focus and touch. It sits inline before the child count, never covering
-  the title or disclosure. This uses BB's normal archive action, including children.
+- Hover a bot conversation row to reveal its **complete** checkbox and archive
+  button, also available on keyboard focus and touch. They sit inline before the
+  child count, never covering the title or disclosure. Archive uses BB's normal
+  archive action, including children.
+- Completing a conversation (and its children) removes it from the bot's list,
+  with Undo in the toast. **N completed** below the list shows them again. New
+  activity, a question, or queued input reopens it automatically.
+- In Settings → Plugins → Bots Sidebar: **Auto-complete** idle bot conversations
+  (on, 24 hours) and **Auto-archive** completed ones (off, 7 days; 0 archives
+  immediately). Neither touches a bot's first conversation, pinned conversations,
+  or anything working. A parent waits until its whole subtree is idle.
 - Each conversation's right-edge count/chevron reveals only its own children,
-  collapsed by default. Once a bot is explicitly expanded, navigation reveals
-  the viewed ancestor path. Navigation never expands a collapsed bot.
+  collapsed by default. Opening one of a bot's conversations, or the bot starting
+  work, unfolds the bot and reveals the viewed ancestor path. Fold it again and it
+  stays folded until the next of those events.
   Chats retains its separate overflow.
 - The avatar's bottom-right spinner shows its **first conversation** working. Small pulsing dots
   to the left show other working conversations—even when collapsed. Three slots

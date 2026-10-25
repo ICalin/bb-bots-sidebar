@@ -6,3 +6,11 @@ export function selectOption(trigger: HTMLElement, name: string) {
   fireEvent.keyDown(trigger, { key: "ArrowDown" });
   fireEvent.click(within(document.body).getByRole("option", { name }));
 }
+
+type Queries = { findByRole: (role: string, options: { name: string | RegExp }) => Promise<HTMLElement> };
+/** Bots unfold on navigation and activity; expand only when still folded. */
+export async function expandBot(slot: Queries, name: string) {
+  const toggle = await slot.findByRole("button", { name: new RegExp(`^(Expand|Collapse) conversations for ${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) });
+  if (toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
+  return toggle;
+}

@@ -5,7 +5,9 @@ Give recurring work a named specialist without tying its identity to one reposit
 - Named bots with configurable avatars, their own instructions, and up to 3,000 characters of durable memory.
 - Per-bot defaults for new conversations: harness, model, reasoning, permissions, starter prompt, and checkout or fresh worktree.
 - A sidebar that groups conversations by bot, keeps active work visible, and folds older chats into expandable trees.
-- Drag-to-bot assignment for existing chats, plus inline archive controls.
+- Drag-to-bot assignment for existing chats, plus inline complete and archive controls.
+- Completed conversations leave the list; idle bot conversations complete automatically after 24 hours, and completed ones can optionally be archived. A bot's first conversation is never completed or archived automatically.
+- Bots unfold when you open one of their conversations or when they start working.
 - Project membership and one optional owner per project to route new conversations. Existing conversation assignments stay intact.
 - `@` completion for bot references and attributed asynchronous coordination through `bb bots list` and `bb bots message`.
 

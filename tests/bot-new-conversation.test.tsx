@@ -45,12 +45,13 @@ it("gives every row one inline + before its disclosure without opening main or e
   const { slot, plus, onNavigate } = await mount({ bots: [bot, { ...bot, id: "other", name: "Other bot", mainThreadId: null }] });
   expect(slot.getByRole("button", { name: "New conversation with Other bot" })).toBeTruthy();
   const row = plus().closest(".project-row")!;
-  const disclosure = within(row as HTMLElement).getByRole("button", { name: "Expand conversations for Test bot" });
+  // Viewing its first conversation unfolds the bot; + must not change that.
+  const disclosure = within(row as HTMLElement).getByRole("button", { name: "Collapse conversations for Test bot" });
   expect(plus().nextElementSibling).toBe(disclosure);
-  expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+  expect(disclosure.getAttribute("aria-expanded")).toBe("true");
   fireEvent.click(plus());
   await slot.findByRole("dialog", { name: "New conversation" });
-  expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+  expect(disclosure.getAttribute("aria-expanded")).toBe("true");
   expect(slot.inspection.navigateCalls).toEqual([]); expect(slot.inspection.navigateCalls).toEqual([]); expect(onNavigate).not.toHaveBeenCalled();
   fireEvent.click(slot.getByRole("button", { name: "Close" }));
   expect(slot.inspection.rpcCalls.every(call => ["bots_list", "bot_prepare"].includes(call.method))).toBe(true);

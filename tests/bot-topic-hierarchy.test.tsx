@@ -104,14 +104,16 @@ it.each(["before", "after", "nest", "escape", "outside", "touch", "blur", "unmou
   expect(document.querySelector(".conversation-drag-ghost")).toBeNull();
 });
 
-it("keeps the bot collapsed through navigation and reveals ancestor branches only after expansion", async () => {
+it("unfolds the bot and the ancestor path when one of its conversations is viewed", async () => {
   const { slot, toggle } = await mount();
+  expect(toggle().getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(slot.getByText("Go grandchild"));
-  expect(toggle().getAttribute("aria-expanded")).toBe("false"); expect(slot.queryByText("Conversation grandchild")).toBeNull();
-  fireEvent.click(toggle()); expect(await slot.findByText("Conversation grandchild")).toBeTruthy();
+  expect(toggle().getAttribute("aria-expanded")).toBe("true"); expect(await slot.findByText("Conversation grandchild")).toBeTruthy();
   expect(slot.container.querySelector('[data-sidebar-thread-id="grandchild"]')?.getAttribute("aria-current")).toBe("page");
-  fireEvent.click(slot.getByText("Go elsewhere")); expect(toggle().getAttribute("aria-expanded")).toBe("true");
-  fireEvent.click(toggle()); fireEvent.click(slot.getByText("Go grandchild")); expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  // Folding while viewing sticks until the user navigates to another of its conversations.
+  fireEvent.click(toggle()); expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(slot.getByText("Go elsewhere")); expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(slot.getByText("Go grandchild")); expect(toggle().getAttribute("aria-expanded")).toBe("true");
 });
 
 it("treats the old main as an ordinary root with independently collapsed children", async () => {

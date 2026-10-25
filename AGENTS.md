@@ -76,7 +76,9 @@ or reintroduce hover toolbars when making unrelated changes.
   A separate end chevron toggles the whole list and counts all top-level roots.
   Double-clicking the bot name/avatar also toggles the list; the first click
   retains normal navigation, without repeating it on the second click.
-  Bots start collapsed; navigation and dialog assignment never automatically expand them.
+  Bots start collapsed. Viewing one of a bot's conversations, or the bot starting live
+  work or waiting for input, unfolds it. Only those transitions expand; the user can fold
+  it again, and it stays folded until the next transition. Dialog assignment never expands.
   Successful outside conversation drops immediately unfold the destination bot,
   then scroll the added conversation into view when the refreshed list renders.
   Explicit expansion shows all roots, including the former main. Children retain
@@ -98,9 +100,10 @@ or reintroduce hover toolbars when making unrelated changes.
   in the subtitle. Never substitute a conversation title or show member-only
   projects as owned. Keep this label stable when folding; truncate with full hover text.
 - Counts/chevrons never navigate. No Topics/Main's children labels or divider.
-  No multi-action hover overlay toolbars. Conversation rows may show one inline
-  archive button on hover/keyboard focus (always available on touch), immediately
-  LEFT of the count/chevron. Keep it outside the navigation link and prevent
+  No multi-action hover overlay toolbars. Bot conversation rows may show an inline
+  complete checkbox and an archive button on hover/keyboard focus (always available
+  on touch), in that order, immediately LEFT of the count/chevron. Chats rows have
+  archive only. Keep it outside the navigation link and prevent
   archive clicks from navigating or toggling children. Use BB Button/Tooltip and
   the native archive action, which also archives child conversations.
 - The Bots header has ONE + dropdown: Bot / Section / Project. Do not restore a
@@ -196,6 +199,19 @@ or reintroduce hover toolbars when making unrelated changes.
   tooltip on overflow. Keep an idle first conversation visually distinct from busy others.
   Waiting takes precedence over working; preserve unread errors, ignore archived
   activity, and disable all animation under reduced motion. Counts never navigate.
+- Completion (plugin DB `thread_completion`, never BB thread state): a completed bot
+  conversation leaves its bot's list. Live work, a pending question, queued input, or
+  attention newer than completedAt reopens it; `thread.active`/`interaction.pending`/
+  `thread.unarchived` clear the row and restart its idle clock. The viewed conversation
+  always stays visible with its ancestors. Hidden completed trees appear behind a small
+  "N completed" toggle below the expanded list. Manually completing covers the subtree;
+  un-completing affects only that row. Working rows cannot be completed.
+  The first ordered root that is not completed is the bot's main: click target, badge,
+  defaults. Auto-complete (default on, 24 h idle) and auto-archive (default off, N days
+  after completion; 0 = immediately) are native plugin settings, run every 15 minutes, and
+  never touch the main, pinned, or busy conversations. A parent auto-completes only after
+  its whole subtree qualifies; auto-archive only archives top-most fully completed subtrees
+  because native archive cascades.
 - Completed conversation status is a green dot when unviewed, then a smaller gray
   dot after viewing—not a checkmark. Preserve working/waiting/error indicators.
 - Unassigned Chats may be assigned through the dialog or dragged onto a bot row.

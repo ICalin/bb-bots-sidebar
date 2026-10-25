@@ -13,6 +13,7 @@ import { listBotConversations } from "./lib/bot-conversations";
 import { botProjectContext } from "./lib/project-context";
 import { BOT_GUIDANCE, botInstructions } from "./lib/bot-instructions";
 import { MEMORY_MAX_CHARS, validateMemory } from "./lib/memory-limit";
+import { createCompletion } from "./lib/completion-server";
 export { rpcContract, avatarSchema } from "./contract";
 export type { BotAvatar, BotMetadata, BotSection, ProjectCreateInput } from "./contract";
 
@@ -25,6 +26,7 @@ export default async function plugin(bb: BbPluginApi) {
   const publish = () => bb.realtime.publish(CHANGED, { updatedAt: Date.now() });
   const state = createPrivateBotState(bb, store, publish);
   const importLegacy = createLegacyImporter(bb, store);
+  const completion = createCompletion(bb, store, publish);
   let personalId: string | null = null;
   const locks = new Map<string, Promise<unknown>>();
   function serial<T>(key: string, operation: () => Promise<T>): Promise<T> {
@@ -253,7 +255,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
   bb.events.on("thread.created", async ({ thread }) => { await routeNewThread(thread, true); });
 
-  registerBotsCli(bb, store, resolveOwner);
+  registerBotsCli(bb, store, resolveOwner, completion.records);
   registerBotMentions(bb, store);
 
   bb.rpc.register(rpcContract, {
@@ -268,7 +270,7 @@ export default async function plugin(bb: BbPluginApi) {
       personalId = personal.id;
       const bots = store.list();
       const legacyHomes = new Set(bots.map((bot) => bot.legacyHomeProjectId));
-      return { bots, projectOwners: store.projectOwners().map(({ projectId, botId }) => ({ projectId, botId })), warnings: [...warnings, ...state.warnings()], personalProjectId: personalId, threadBindings: store.bindings(), sections: store.sections(), hosts: hosts.map((host) => ({ id: host.id, name: host.name, connected: host.status === "connected" })), projects: projects.filter((project) => project.kind === "standard" && !legacyHomes.has(project.id)).map((project) => ({ id: project.id, name: project.name })) };
+      return { bots, projectOwners: store.projectOwners().map(({ projectId, botId }) => ({ projectId, botId })), warnings: [...warnings, ...state.warnings()], personalProjectId: personalId, threadBindings: store.bindings(), completions: completion.completions(), sections: store.sections(), hosts: hosts.map((host) => ({ id: host.id, name: host.name, connected: host.status === "connected" })), projects: projects.filter((project) => project.kind === "standard" && !legacyHomes.has(project.id)).map((project) => ({ id: project.id, name: project.name })) };
     },
     bot_create: ({ name, role, hostId, avatar, sectionId, linkedProjectIds, ownedProjectIds, soul, memory, settings, launchPreset }) => serial("registry", async () => {
       await importLegacy(); await validateLinks(linkedProjectIds); if (ownedProjectIds) await validateLinks(ownedProjectIds); validateSection(sectionId);
@@ -351,6 +353,10 @@ export default async function plugin(bb: BbPluginApi) {
       }
       return { ok: true } as const;
     }),
+    conversation_complete: async ({ threadId, completed }) => {
+      if (!await resolveOwner(threadId, false)) throw new Error("Only bot conversations can be completed.");
+      return completion.setCompleted(threadId, completed);
+    },
     conversation_nest: ({ threadId, parentThreadId }) => serial("registry", async () => {
       if (threadId === parentThreadId) throw new Error("A conversation cannot be nested under itself.");
       const thread = await bb.sdk.threads.get({ threadId });

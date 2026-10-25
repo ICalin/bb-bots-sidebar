@@ -1,3 +1,4 @@
+import { expandBot } from "./select-helper";
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, within } from "@testing-library/react";
@@ -17,7 +18,7 @@ async function mount(personal: boolean) {
     sidebarThreads: { projects: [{ id: rows[0]!.projectId, name: "Project", isPersonal: personal, href: "/projects/project", settingsHref: "/projects/project/settings" }], threads: rows },
     rpc: { bots_list: () => ({ bots: personal ? [] : [bot], personalProjectId, hosts: [], sections: [], projects: [], warnings: [], threadBindings: personal ? [] : rows.filter(row => !row.parentThreadId).map(row => ({ threadId: row.id, botId: bot.id })) }) },
   });
-  if (!personal) fireEvent.click(await slot.findByRole("button", { name: "Expand conversations for Test bot" }));
+  if (!personal) await expandBot(slot, "Test bot");
   await slot.findByText("Conversation root");
   return { slot, onNavigate };
 }
@@ -27,7 +28,10 @@ it.each([false, true])("requests native archive without prematurely hiding rows 
   const link = slot.container.querySelector('[data-sidebar-thread-id="root"]')!;
   const row = link.parentElement!;
   const archive = within(row).getByRole("button", { name: "Archive Conversation root" });
-  expect(archive.closest("a")).toBeNull(); expect(archive.previousElementSibling).toBe(link);
+  expect(archive.closest("a")).toBeNull();
+  // Bot rows put the completion checkbox between the link and archive; Chats rows have none.
+  if (personal) expect(archive.previousElementSibling).toBe(link);
+  else { expect(archive.previousElementSibling?.getAttribute("data-complete-thread-id")).toBe("root"); expect(archive.previousElementSibling?.previousElementSibling).toBe(link); }
   const disclosure = within(row).getByRole("button", { name: "Expand children of Conversation root" });
   expect(row.lastElementChild).toBe(disclosure); expect(archive.nextElementSibling).toBe(disclosure);
   fireEvent.click(archive, { ctrlKey: true });
