@@ -26,7 +26,6 @@ import type {
 } from "@get-bb/plugin-sdk/app";
 import type { BotAvatar, BotMetadata, BotSection, ProjectOwner, rpcContract } from "./contract";
 import { orderedBotConversationTree, conversationOwners, conversationTree, isBusy, splitCompletedConversations } from "./lib/conversations";
-import { ConversationCompleteCheckbox } from "@/components/conversation-complete-checkbox";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,6 +40,9 @@ import { RenameConversationDialog } from "@/components/rename-conversation-dialo
 import { SidebarConversationStatus } from "@/components/sidebar-conversation-status";
 import { BotActivityBadge } from "@/components/bot-activity-badge";
 import { ConversationArchiveButton } from "@/components/conversation-archive-button";
+import { ConversationRowActions } from "@/components/conversation-row-actions";
+import { useWorkflowRuns, useWorkflowRunsData, WorkflowRunRow, WorkflowRunsContext } from "@/components/workflow-runs";
+import type { WorkflowRun } from "@/lib/workflow-runs";
 import { BotNewConversationButton } from "@/components/bot-new-conversation-button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ResizableChats } from "@/components/resizable-chats";
@@ -359,14 +361,27 @@ function useConversationBranch(threadId: string, activeThreadId: string | null, 
   useEffect(() => {
     if (threadId === activeThreadId) rowRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [threadId, activeThreadId]);
-  return { expanded, toggle: () => setExpanded((current) => !current), childrenId, rowRef, containsActive };
+  return { expanded, toggle: () => setExpanded((current) => !current), reveal: () => setExpanded(true), childrenId, rowRef, containsActive };
 }
 
+/** A newly started workflow reveals its virtual row once; folding afterwards sticks. */
+function useRevealLiveWorkflows(workflows: readonly WorkflowRun[], reveal: () => void) {
+  const liveKey = workflows.filter((run) => run.status !== "idle").map((run) => run.key).join(" ");
+  const seen = useRef(new Set<string>());
+  useEffect(() => {
+    const fresh = liveKey.split(" ").filter((key) => key && !seen.current.has(key));
+    for (const key of fresh) seen.current.add(key);
+    if (fresh.length) reveal();
+  }, [liveKey]);
+}
+
+/** Leading disclosure; leaf rows keep an empty slot so titles stay aligned. */
 function BranchToggle({ title, count, expanded, childrenId, onToggle }: { title: string; count: number; expanded: boolean; childrenId: string; onToggle: () => void }) {
-  return count ? <button type="button" className="conversation-disclosure" aria-label={`${expanded ? "Collapse" : "Expand"} children of ${title}`} aria-expanded={expanded} aria-controls={childrenId} title={`${count} child conversations`} onClick={onToggle}>
-    <span className="text-[9px] tabular-nums" aria-hidden="true">{count}</span>
+  if (!count) return <span className="conversation-disclosure-slot" aria-hidden="true" />;
+  return <button type="button" className="conversation-disclosure conversation-disclosure-slot" aria-label={`${expanded ? "Collapse" : "Expand"} children of ${title}`} aria-expanded={expanded} aria-controls={childrenId} title={`${count} ${count === 1 ? "child" : "children"}`}
+    onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onToggle(); }}>
     <span className={expanded ? "rotate-90" : ""}><TinyIcon name="chevron" /></span>
-  </button> : null;
+  </button>;
 }
 
 type ReorderConversation = (threadId: string, targetThreadId: string, position: "before" | "after") => void;
@@ -380,7 +395,10 @@ function ThreadRow({ thread, siblings, childrenByParent, activePath, navigate, a
   const split = experimental_useSidebarThreadSplit(thread.id);
   const shortcut = useSidebarThreadShortcut(thread.id);
   const children = childrenByParent.get(thread.id) ?? [];
+  const workflows = useWorkflowRuns().byOwner.get(thread.id) ?? [];
+  const childCount = children.length + workflows.length;
   const branch = useConversationBranch(thread.id, activeThreadId, activePath);
+  useRevealLiveWorkflows(workflows, branch.reveal);
   const title = thread.displayTitle ?? thread.title ?? thread.titleFallback ?? "Untitled conversation";
   const completed = completion.completed.has(thread.id);
   const busy = isBusy(thread);
@@ -414,14 +432,16 @@ function ThreadRow({ thread, siblings, childrenByParent, activePath, navigate, a
     { label: completed ? "Mark incomplete" : "Mark complete", action: () => completion.onChange(thread, !completed), disabled: !completed && busy },
   ]}>
     <div draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/x-bb-thread-id", thread.id); }} className="thread-row flex min-h-7 items-center rounded-md text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground" aria-current={activeThreadId === thread.id ? "page" : undefined} data-active-descendant={!branch.expanded && branch.containsActive} data-completed={completed || undefined}>
+      <BranchToggle title={title} count={childCount} expanded={branch.expanded} childrenId={branch.childrenId} onToggle={branch.toggle} />
       <a href={thread.href} {...split.splitProps} onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); reorderDrag.begin(thread, event); }} ref={branch.rowRef} role="link" tabIndex={0} aria-current={activeThreadId === thread.id ? "page" : undefined} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); } }} data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id} aria-keyshortcuts={shortcut?.ariaKeyshortcuts} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-1 pr-1" onClick={(event) => { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); }}>
         <SidebarConversationStatus thread={thread} /><span className="min-w-0 flex-1 truncate"><ThreadTitle threadId={thread.id} /></span>{shortcut ? <kbd className="shrink-0 rounded bg-muted px-1 text-[9px]">{shortcut.label}</kbd> : null}
       </a>
-      <ConversationCompleteCheckbox thread={thread} completed={completed} disabled={!completed && busy} onChange={(value) => completion.onChange(thread, value)} />
-      <ConversationArchiveButton thread={thread} />
-      <BranchToggle title={title} count={children.length} expanded={branch.expanded} childrenId={branch.childrenId} onToggle={branch.toggle} />
+      <ConversationRowActions thread={thread} completed={completed} disabled={!completed && busy} onChange={(value) => completion.onChange(thread, value)} />
     </div>
-  </ConversationContextMenu>{children.length ? <ul id={branch.childrenId} className="conversation-children" hidden={!branch.expanded}>{branch.expanded ? children.map((child) => <ThreadRow key={child.id} thread={child} siblings={children} childrenByParent={childrenByParent} activePath={activePath} navigate={navigate} activeThreadId={activeThreadId} onNavigate={onNavigate} onReorder={onReorder} onNewInWorktree={onNewInWorktree} onFork={onFork} onNest={onNest} reorderDrag={reorderDrag} completion={completion} />) : null}</ul> : null}</li>;
+  </ConversationContextMenu>{childCount ? <ul id={branch.childrenId} className="conversation-children" hidden={!branch.expanded}>{branch.expanded ? <>
+    {children.map((child) => <ThreadRow key={child.id} thread={child} siblings={children} childrenByParent={childrenByParent} activePath={activePath} navigate={navigate} activeThreadId={activeThreadId} onNavigate={onNavigate} onReorder={onReorder} onNewInWorktree={onNewInWorktree} onFork={onFork} onNest={onNest} reorderDrag={reorderDrag} completion={completion} />)}
+    {workflows.map((run) => <WorkflowRunRow key={run.key} run={run} activeThreadId={activeThreadId} navigate={navigate} onNavigate={onNavigate} />)}
+  </> : null}</ul> : null}</li>;
 }
 
 function BotGroup({
@@ -480,9 +500,10 @@ function BotGroup({
   conversationDropTarget: "first" | "last" | null;
 }) {
   const [showCompleted, setShowCompleted] = useState(false);
-  const split = useMemo(() => splitCompletedConversations(threads, completions, activeThreadId), [threads, completions, activeThreadId]);
+  const treeActiveId = useWorkflowRuns().ownerOf(activeThreadId) ?? activeThreadId;
+  const split = useMemo(() => splitCompletedConversations(threads, completions, treeActiveId), [threads, completions, treeActiveId]);
   const treeThreads = showCompleted ? threads : split.shown;
-  const { childrenByParent, activePath, roots } = useMemo(() => orderedBotConversationTree(treeThreads, metadata.threadOrder, activeThreadId), [treeThreads, metadata.threadOrder, activeThreadId]);
+  const { childrenByParent, activePath, roots } = useMemo(() => orderedBotConversationTree(treeThreads, metadata.threadOrder, treeActiveId), [treeThreads, metadata.threadOrder, treeActiveId]);
   // The click target, badge and protected main are the first conversation that is not completed.
   const shownRoots = useMemo(() => showCompleted ? orderedBotConversationTree(split.shown, metadata.threadOrder).roots : roots, [showCompleted, split.shown, metadata.threadOrder, roots]);
   const completion: CompletionControls = useMemo(() => ({ completed: split.completed, onChange: onCompletedChange }), [split.completed, onCompletedChange]);
@@ -493,7 +514,7 @@ function BotGroup({
   const dropHint = conversationDropTarget === "first" ? "Make first" : conversationDropTarget === "last" ? "Add to end" : dropToTop ? "Drop to make top conversation" : null;
   const portalScope = usePortalScopeProps();
   const renderThread = (thread: PluginSidebarThread) => <ThreadRow key={thread.id} thread={thread} siblings={roots} childrenByParent={childrenByParent} activePath={activePath} navigate={navigate} activeThreadId={activeThreadId} onNavigate={onNavigate} onReorder={onReorder} onNewInWorktree={onNewInWorktree} onFork={onFork} onNest={onNest} reorderDrag={reorderDrag} completion={completion} />;
-  const botSelected = selected || threads.some((thread) => thread.id === activeThreadId);
+  const botSelected = selected || threads.some((thread) => thread.id === treeActiveId);
   const latest = shownRoots[0];
   const subtitle = [metadata.role, ownedProjectNames.join(", ")].filter(Boolean).join(" · ");
   const subtitleTitle = [metadata.role, ownedProjectNames.length ? `Owned projects: ${ownedProjectNames.join(", ")}` : ""].filter(Boolean).join(" · ");
@@ -564,13 +585,17 @@ function RecentRow({
   const split = experimental_useSidebarThreadSplit(thread.id);
   const shortcut = useSidebarThreadShortcut(thread.id);
   const children = childrenByParent.get(thread.id) ?? [];
+  const workflows = useWorkflowRuns().byOwner.get(thread.id) ?? [];
+  const childCount = children.length + workflows.length;
   const branch = useConversationBranch(thread.id, activeThreadId, activePath);
+  useRevealLiveWorkflows(workflows, branch.reveal);
   const title = thread.displayTitle ?? thread.title ?? thread.titleFallback ?? "Untitled conversation";
   const detail = thread.environment?.branchName ?? thread.host?.name ?? "Personal conversation";
   return (
     <li>
       <ConversationContextMenu thread={thread} dragging={draggingThreadId === thread.id} items={[{ label: "Assign to bot…", action: () => onAssign(thread) }]}>
       <div className="recent-row flex min-h-6 items-center rounded-md px-1 hover:bg-state-hover" data-conversation-dragging={draggingThreadId === thread.id} aria-current={activeThreadId === thread.id ? "page" : undefined} data-active-descendant={!branch.expanded && branch.containsActive}>
+      <BranchToggle title={title} count={childCount} expanded={branch.expanded} childrenId={branch.childrenId} onToggle={branch.toggle} />
       <a
         href={thread.href}
         {...split.splitProps}
@@ -600,10 +625,12 @@ function RecentRow({
         </span>
       </a>
       <ConversationArchiveButton thread={thread} />
-      <BranchToggle title={title} count={children.length} expanded={branch.expanded} childrenId={branch.childrenId} onToggle={branch.toggle} />
       </div>
       </ConversationContextMenu>
-      {children.length ? <ul id={branch.childrenId} className="conversation-children" hidden={!branch.expanded}>{branch.expanded ? children.map((child) => <RecentRow key={child.id} thread={child} childrenByParent={childrenByParent} activePath={activePath} navigate={navigate} activeThreadId={activeThreadId} onNavigate={onNavigate} onAssign={onAssign} onConversationDrag={onConversationDrag} draggingThreadId={draggingThreadId} />) : null}</ul> : null}
+      {childCount ? <ul id={branch.childrenId} className="conversation-children" hidden={!branch.expanded}>{branch.expanded ? <>
+        {children.map((child) => <RecentRow key={child.id} thread={child} childrenByParent={childrenByParent} activePath={activePath} navigate={navigate} activeThreadId={activeThreadId} onNavigate={onNavigate} onAssign={onAssign} onConversationDrag={onConversationDrag} draggingThreadId={draggingThreadId} />)}
+        {workflows.map((run) => <WorkflowRunRow key={run.key} run={run} activeThreadId={activeThreadId} navigate={navigate} onNavigate={onNavigate} />)}
+      </> : null}</ul> : null}
     </li>
   );
 }
@@ -614,6 +641,9 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
   const portalScope = usePortalScopeProps();
   const [conversation, setConversation] = useState<ConversationTarget | null>(null);
   const { rpc, bots, hosts, sections, projects, threadBindings, warnings, personalProjectId, projectOwners, completions, loaded, error, refresh } = useBotData();
+  const workflowRuns = useWorkflowRunsData();
+  // A workflow agent thread is hidden; its starting conversation stands in for it in the tree.
+  const treeActiveId = workflowRuns.ownerOf(activeThreadId) ?? activeThreadId;
   const [actionError, setActionError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<PluginSidebarThread | null>(null);
   const [showOtherChats, setShowOtherChats] = useState(false);
@@ -670,7 +700,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
   });
   const outsideDropTarget = conversationDrop.drag?.botId
     ? JSON.parse(conversationDrop.drag.botId) as { botId: string; placeFirst: boolean } : null;
-  const selectedBotId = activeThreadId ? owners.get(activeThreadId) : undefined;
+  const selectedBotId = treeActiveId ? owners.get(treeActiveId) : undefined;
   const threadsByBot = useMemo(() => {
     const result = new Map<string, PluginSidebarThread[]>();
     for (const thread of sidebar.threads) {
@@ -682,7 +712,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
   }, [sidebar.threads, owners]);
   // Viewing a bot's conversation or new work in any of them unfolds the bot.
   // Only transitions expand it, so the user can still fold it afterwards.
-  const activeOwner = activeThreadId ? owners.get(activeThreadId) : undefined;
+  const activeOwner = treeActiveId ? owners.get(treeActiveId) : undefined;
   useEffect(() => {
     if (activeOwner) setShownTopicBots((current) => current.has(activeOwner) ? current : new Set([...current, activeOwner]));
   }, [activeThreadId, activeOwner]);
@@ -844,10 +874,11 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
 
   const chatsTree = useMemo(() => conversationTree(
     sidebar.threads.filter((thread) => !owners.has(thread.id)),
-    null, activeThreadId, 8,
-  ), [sidebar.threads, owners, activeThreadId]);
+    null, treeActiveId, 8,
+  ), [sidebar.threads, owners, treeActiveId]);
   const renderChat = (thread: PluginSidebarThread) => <RecentRow key={thread.id} thread={thread} childrenByParent={chatsTree.childrenByParent} activePath={chatsTree.activePath} navigate={navigate} activeThreadId={activeThreadId} onNavigate={onNavigate} onAssign={setAssigning} onConversationDrag={(row, event) => { if (!owners.has(row.id) && !assignmentRequests.current.has(row.id)) conversationDrop.begin(row, event); }} draggingThreadId={conversationDrop.drag?.threadId ?? null} />;
   return (
+    <WorkflowRunsContext.Provider value={workflowRuns}>
     <TooltipProvider>
     <div ref={sidebarElement} className="bots-sidebar flex h-full min-h-0 flex-col overflow-hidden px-1.5 pb-1.5" data-conversation-dragging={Boolean(conversationDrop.drag)}>
       <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
@@ -910,7 +941,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
           <button type="button" className="h-5 rounded px-1.5 text-[9px] text-muted-foreground hover:bg-state-hover" aria-pressed={showHidden} onClick={() => setShowHidden((current) => !current)}>{hiddenBots.length} hidden</button>
         </div> : null}
       </div>
-      <ResizableChats activeChatId={activeThreadId && !owners.has(activeThreadId) ? activeThreadId : null} onNewChat={() => {
+      <ResizableChats activeChatId={treeActiveId && !owners.has(treeActiveId) ? treeActiveId : null} onNewChat={() => {
         navigate.toCompose({ ...(personalProjectId ? { projectId: personalProjectId } : {}), focusPrompt: true });
         onNavigate();
       }}>
@@ -969,6 +1000,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
     </div>
     {conversationDrop.drag ? createPortal(<div {...portalScope} ref={conversationDrop.ghostRef} className="conversation-drag-ghost rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md" aria-hidden="true"><div className="truncate">{conversationDrop.drag.title}</div><div className="text-[10px] text-muted-foreground">{outsideDropTarget?.placeFirst ? "Drop to make top conversation" : "Drop to add at end · Face or Shift for top"}</div></div>, document.body) : null}
     </TooltipProvider>
+    </WorkflowRunsContext.Provider>
   );
 }
 

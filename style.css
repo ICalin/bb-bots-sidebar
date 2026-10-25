@@ -177,23 +177,40 @@
   opacity: 0;
   pointer-events: none;
 }
-.thread-row:hover > .conversation-archive,
-.thread-row:has(:focus-visible) > .conversation-archive,
 .recent-row:hover > .conversation-archive,
 .recent-row:has(:focus-visible) > .conversation-archive,
 .conversation-archive:focus-visible {
   opacity: 1;
   pointer-events: auto;
 }
+/* Right edge of bot rows: complete, with archive revealed directly below it. */
+.conversation-actions { position: relative; display: flex; flex: 0 0 auto; }
 .conversation-complete { opacity: 0; pointer-events: none; }
-.thread-row:hover > .conversation-complete,
-.thread-row:has(:focus-visible) > .conversation-complete,
+.thread-row:hover .conversation-complete,
+.thread-row:has(:focus-visible) .conversation-complete,
 .conversation-complete:focus-visible,
 .conversation-complete[data-completed="true"] {
   opacity: 1;
   pointer-events: auto;
 }
-.conversation-complete:disabled { opacity: 0 !important; }
+.thread-row:hover .conversation-complete:disabled,
+.thread-row:has(:focus-visible) .conversation-complete:disabled { opacity: 0.3; }
+.conversation-actions-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 30;
+  display: none;
+  border-radius: 0.375rem;
+  background: var(--popover, var(--background));
+  box-shadow: 0 0 0 1px var(--border), 0 4px 12px rgb(0 0 0 / 0.25);
+}
+.conversation-actions-menu .conversation-archive { opacity: 1; pointer-events: auto; }
+@media (hover: hover) and (pointer: fine) {
+  .conversation-actions:hover > .conversation-actions-menu,
+  .conversation-actions:has(:focus-visible) > .conversation-actions-menu { display: block; }
+}
+.bots-sidebar[data-conversation-dragging="true"] .conversation-actions-menu { display: none; }
 .conversation-complete[data-completed="true"] { color: var(--success); }
 .thread-row[data-completed="true"] > a { opacity: 0.6; }
 .completed-toggle {
@@ -208,6 +225,7 @@
 .completed-toggle:hover { background: var(--state-hover); color: var(--foreground); }
 @media (hover: none), (pointer: coarse) {
   .conversation-archive, .bot-new-conversation, .conversation-complete { opacity: 1; pointer-events: auto; }
+  .conversation-complete:disabled { opacity: 0.3; }
 }
 .thread-row[aria-current="page"],
 .recent-row[aria-current="page"] {
@@ -217,6 +235,16 @@
 .thread-row[data-active-descendant="true"],
 .recent-row[data-active-descendant="true"] {
   background: var(--state-active);
+}
+/* Leading disclosure. Leaf rows keep the empty slot so titles align. */
+.conversation-disclosure-slot {
+  display: flex;
+  width: 0.875rem;
+  height: 1.4rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.125rem;
 }
 .conversation-disclosure {
   display: flex;
@@ -231,6 +259,12 @@
   cursor: pointer;
   border-radius: 3px;
 }
+.conversation-disclosure.conversation-disclosure-slot { width: 0.875rem; margin: 0 0.125rem 0 0; padding: 0; gap: 0; }
+.conversation-disclosure-slot .tiny-icon, .conversation-disclosure-slot > svg { width: 12px; height: 12px; }
+.workflow-run-row { cursor: pointer; }
+.workflow-run-row .conversation-disclosure-slot { color: var(--muted-foreground); }
+.workflow-run-count { font-size: 9px; color: var(--muted-foreground); }
+.workflow-agent-row[aria-current="page"] { background: var(--state-active); color: var(--foreground); }
 .conversation-disclosure:hover { color: var(--foreground); background: var(--state-active); }
 .conversation-children {
   margin-left: 0.4375rem;

@@ -29,16 +29,22 @@ it.each([false, true])("requests native archive without prematurely hiding rows 
   const row = link.parentElement!;
   const archive = within(row).getByRole("button", { name: "Archive Conversation root" });
   expect(archive.closest("a")).toBeNull();
-  // Bot rows put the completion checkbox between the link and archive; Chats rows have none.
-  if (personal) expect(archive.previousElementSibling).toBe(link);
-  else { expect(archive.previousElementSibling?.getAttribute("data-complete-thread-id")).toBe("root"); expect(archive.previousElementSibling?.previousElementSibling).toBe(link); }
+  // The disclosure leads the row. Chats rows end with archive; bot rows end with the
+  // complete checkbox, and archive sits in the pop-down below it.
   const disclosure = within(row).getByRole("button", { name: "Expand children of Conversation root" });
-  expect(row.lastElementChild).toBe(disclosure); expect(archive.nextElementSibling).toBe(disclosure);
+  expect(row.firstElementChild).toBe(disclosure); expect(disclosure.nextElementSibling).toBe(link);
+  if (personal) { expect(row.lastElementChild).toBe(archive); expect(archive.previousElementSibling).toBe(link); }
+  else {
+    const actions = row.lastElementChild!;
+    expect(actions.classList.contains("conversation-actions")).toBe(true); expect(actions.previousElementSibling).toBe(link);
+    expect(actions.firstElementChild?.getAttribute("data-complete-thread-id")).toBe("root");
+    expect(archive.closest(".conversation-actions-menu")?.parentElement).toBe(actions);
+  }
   fireEvent.click(archive, { ctrlKey: true });
   expect(slot.nativeActionCalls).toEqual([{ key: "bb--core/archive", threadId: "root" }]);
   expect(slot.container.querySelector('[data-sidebar-thread-id="root"]')).not.toBeNull();
   expect(onNavigate).not.toHaveBeenCalled(); expect(slot.inspection.navigateCalls).toEqual([]);
-  expect(slot.inspection.rpcCalls.map(call => call.method)).toEqual(["bots_list"]);
+  expect(slot.inspection.rpcCalls.map(call => call.method).filter(method => method !== "workflow_runs")).toEqual(["bots_list"]);
 });
 
 it.each([false, true])("gives each expanded child its own archive action (Chats=%s)", async (personal) => {
@@ -68,5 +74,5 @@ it("archives a main child, never the bot identity or main pointer", async () => 
   fireEvent.click(slot.getByRole("button", { name: "Expand children of Conversation main" }));
   fireEvent.click(slot.getByRole("button", { name: "Archive Conversation main-child" }));
   expect(slot.nativeActionCalls).toEqual([{ key: "bb--core/archive", threadId: "main-child" }]);
-  expect(slot.inspection.rpcCalls.map(call => call.method)).toEqual(["bots_list"]);
+  expect(slot.inspection.rpcCalls.map(call => call.method).filter(method => method !== "workflow_runs")).toEqual(["bots_list"]);
 });

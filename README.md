@@ -187,10 +187,10 @@ in bot state.
   added conversation into view. Hold Shift anywhere on the row to
   put it first instead (also unfolding the list). Drop an
   existing top-level conversation on its own bot row to move it to the top.
-- Hover a bot conversation row to reveal its **complete** checkbox and archive
-  button, also available on keyboard focus and touch. They sit inline before the
-  child count, never covering the title or disclosure. Archive uses BB's normal
-  archive action, including children.
+- Hover a bot conversation row to reveal its **complete** checkbox at the right
+  edge (always visible on touch). Hover the checkbox to reveal **archive** just
+  below it; on touch, archive is in the long-press menu. Archive uses BB's normal
+  archive action, including children. Chats rows show archive on hover.
 - Completing a conversation (and its children) removes it from the bot's list,
   with Undo in the toast. **N completed** below the list shows them again. New
   activity, a question, or queued input reopens it automatically.
@@ -198,8 +198,11 @@ in bot state.
   (on, 24 hours) and **Auto-archive** completed ones (off, 7 days; 0 archives
   immediately). Neither touches a bot's first conversation, pinned conversations,
   or anything working. A parent waits until its whole subtree is idle.
-- Each conversation's right-edge count/chevron reveals only its own children,
-  collapsed by default. Opening one of a bot's conversations, or the bot starting
+- Each conversation's leading chevron reveals only its own children, collapsed by
+  default (the tooltip gives the count).
+- A running BB workflow shows as a virtual child of the conversation that started
+  it, e.g. **category-investigation · 3 running**. Click it to list its live agent
+  threads and open one. A new run unfolds its conversation once. Opening one of a bot's conversations, or the bot starting
   work, unfolds the bot and reveals the viewed ancestor path. Fold it again and it
   stays folded until the next of those events.
   Chats retains its separate overflow.

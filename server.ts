@@ -8,6 +8,7 @@ import { memoryFacts, mutateStateDocument } from "./lib/state-actions";
 import { createLegacyImporter } from "./lib/migrate-bots";
 import { browseProjectDirectory, createWorkProject } from "./lib/project-creation";
 import { registerBotsCli } from "./lib/bots-cli";
+import { createWorkflowRuns } from "./lib/workflow-runs-server";
 import { registerBotMentions } from "./lib/bot-mentions";
 import { listBotConversations } from "./lib/bot-conversations";
 import { botProjectContext } from "./lib/project-context";
@@ -26,7 +27,9 @@ export default async function plugin(bb: BbPluginApi) {
   const publish = () => bb.realtime.publish(CHANGED, { updatedAt: Date.now() });
   const state = createPrivateBotState(bb, store, publish);
   const importLegacy = createLegacyImporter(bb, store);
-  const completion = createCompletion(bb, store, publish);
+  // Late-bound: workflow events reopen completions; completion asks for live runs.
+  const workflowRuns = createWorkflowRuns(bb, (ownerThreadId) => completion.reopenForActivity(ownerThreadId));
+  const completion = createCompletion(bb, store, publish, workflowRuns.busyOwners);
   let personalId: string | null = null;
   const locks = new Map<string, Promise<unknown>>();
   function serial<T>(key: string, operation: () => Promise<T>): Promise<T> {
@@ -261,6 +264,7 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(rpcContract, {
     project_browse: ({ hostId, path }) => browseProjectDirectory(bb, { hostId, path }),
     project_create: (input) => serial("project-create", () => serial(`project-create:${input.requestId}`, () => createWorkProject(bb, store, input))),
+    workflow_runs: async () => ({ runs: await workflowRuns.list() }),
     bots_list: async () => {
       const warnings = await importLegacy();
       await Promise.all(store.list().map((bot) => serial(bot.id, () => state.prepare(bot.id))));

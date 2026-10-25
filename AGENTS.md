@@ -100,11 +100,13 @@ or reintroduce hover toolbars when making unrelated changes.
   in the subtitle. Never substitute a conversation title or show member-only
   projects as owned. Keep this label stable when folding; truncate with full hover text.
 - Counts/chevrons never navigate. No Topics/Main's children labels or divider.
-  No multi-action hover overlay toolbars. Bot conversation rows may show an inline
-  complete checkbox and an archive button on hover/keyboard focus (always available
-  on touch), in that order, immediately LEFT of the count/chevron. Chats rows have
-  archive only. Keep it outside the navigation link and prevent
-  archive clicks from navigating or toggling children. Use BB Button/Tooltip and
+  No multi-action hover overlay toolbars. Bot conversation rows end with the complete
+  checkbox (hover/keyboard focus; always on touch), right-aligned across rows. Archive
+  is the one exception to "no overlay": a single button revealed directly BELOW the
+  checkbox while it is hovered or keyboard-focused (fine pointers only). Touch gets no
+  inline archive; it stays in the long-press/context menu. Chats rows end with an
+  inline hover archive button. Keep controls outside the navigation link and prevent
+  their clicks from navigating or toggling children. Use BB Button/Tooltip and
   the native archive action, which also archives child conversations.
 - The Bots header has ONE + dropdown: Bot / Section / Project. Do not restore a
   separate + Section button or make + directly open the bot editor. Section creation
@@ -189,8 +191,9 @@ or reintroduce hover toolbars when making unrelated changes.
   rename/archive, older unassigned Chats grouped under N Other, and status icons.
 - Highlight the actual current chat with `[aria-current="page"]` styles (the
   Tailwind `aria-current:` variant only matches `true`). Child branches default
-  closed. Put the child count and disclosure chevron at the RIGHT end (`6 ›`),
-  not on the left; no disclosure spacers for leaf rows and never overlay toolbars. Selected
+  closed. Conversation disclosure chevrons LEAD the row (count in the tooltip); leaf
+  rows keep an empty `.conversation-disclosure-slot` so titles align (user direction,
+  replacing the earlier right-end `6 ›`). Bot rows keep their end chevron. Selected
   rows use background highlighting only, without a left stripe.
   Reveal the current chat's ancestor path on navigation.
 - The avatar's bottom-right activity badge reflects its FIRST conversation, not
@@ -199,6 +202,13 @@ or reintroduce hover toolbars when making unrelated changes.
   tooltip on overflow. Keep an idle first conversation visually distinct from busy others.
   Waiting takes precedence over working; preserve unread errors, ignore archived
   activity, and disable all animation under reduced motion. Counts never navigate.
+- Workflows: live BB workflow runs appear as virtual child rows of the conversation that
+  started them (after real children; not threads, no complete/archive). The source is
+  the workflows plugin's hidden agent threads (`originPluginId: "workflows"`,
+  `lifecycleOwnerThreadId` = owner, run name/id parsed from `titleFallback`); it
+  archives finished agents, so only live agents are known. A run reveals its agent
+  threads; viewing an agent unfolds its bot, owner, and run. A newly started run reveals
+  itself once. A live run keeps its owner busy for completion and reopens it.
 - Completion (plugin DB `thread_completion`, never BB thread state): a completed bot
   conversation leaves its bot's list. Live work, a pending question, queued input, or
   attention newer than completedAt reopens it; `thread.active`/`interaction.pending`/

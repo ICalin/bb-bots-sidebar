@@ -86,7 +86,14 @@ export const stateMutationToolSchema = z.object({
 });
 export const stateMutationResultSchema = z.object({ botId: id, target: stateTargetSchema, changed: z.boolean(), revision: z.number(), state: z.json() }).strict();
 
+const workflowStatusSchema = z.enum(["working", "waiting", "error", "idle"]);
+export const workflowRunSchema = z.object({
+  key: z.string().min(1), ownerThreadId: id, name: z.string(), runId: z.string().nullable(), status: workflowStatusSchema, startedAt: z.number(),
+  agents: z.array(z.object({ threadId: id, title: z.string(), status: workflowStatusSchema, createdAt: z.number() }).strict()),
+}).strict();
+
 export const rpcContract = defineRpcContract({
+  workflow_runs: { input: z.null(), output: z.object({ runs: z.array(workflowRunSchema) }).strict() },
   bots_list: { input: z.null(), output: z.object({ bots: z.array(metadataSchema), hosts: z.array(hostSchema), sections: z.array(sectionSchema), projects: z.array(projectSchema), threadBindings: z.array(z.object({ threadId: id, botId: id }).strict()), warnings: z.array(z.string()), personalProjectId: id, projectOwners: z.array(projectOwnerSchema).optional(), completions: z.array(z.object({ threadId: id, completedAt: z.number() }).strict()).optional() }).strict() },
   project_browse: { input: projectBrowseInputSchema, output: projectBrowseOutputSchema },
   project_create: { input: projectCreateInputSchema, output: projectSchema },

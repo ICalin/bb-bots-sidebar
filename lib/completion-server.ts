@@ -51,7 +51,7 @@ export function mainConversationId<T extends CompletionThread & { createdAt: num
   return conversationRoots(orderConversations(shown, order))[0]?.id ?? null;
 }
 
-export function createCompletion(bb: BbPluginApi, store: BotStore, publish: () => void) {
+export function createCompletion(bb: BbPluginApi, store: BotStore, publish: () => void, liveWorkflowOwners: () => Promise<ReadonlySet<string>> = async () => new Set()) {
   const db = bb.storage.database();
   // thread_completion is created by the bot store's append-only migrations.
   const settingsHandle = bb.settings.define({
@@ -103,7 +103,7 @@ export function createCompletion(bb: BbPluginApi, store: BotStore, publish: () =
       try {
         const settings = await readSettings();
         if (!settings.autoComplete && !settings.autoArchive) return { completed: [], archived: [] };
-        const threads = await listThreads();
+        const [threads, workflowOwners] = await Promise.all([listThreads(), liveWorkflowOwners()]);
         const { byBot } = botThreads(threads);
         const now = Date.now();
         const current = records();
@@ -112,7 +112,8 @@ export function createCompletion(bb: BbPluginApi, store: BotStore, publish: () =
         for (const [botId, list] of byBot) {
           const bot = store.get(botId);
           if (!bot) continue;
-          const view = list.map(toCompletionThread);
+          // A running BB workflow keeps the conversation that started it open.
+          const view = list.map((thread) => { const row = toCompletionThread(thread); return workflowOwners.has(row.id) ? { ...row, busy: true } : row; });
           const mainId = mainConversationId(view, bot.threadOrder, current);
           const decision = decideCompletion({ threads: view, records: current, mainId, now, settings });
           completed.push(...decision.complete);
@@ -154,6 +155,8 @@ export function createCompletion(bb: BbPluginApi, store: BotStore, publish: () =
   });
 
   return {
+    /** Workflow progress on a conversation counts as its own activity. */
+    reopenForActivity: (threadId: string) => { if (reopenCompleted(threadId)) publish(); },
     records,
     evaluate,
     setCompleted,
