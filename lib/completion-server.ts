@@ -56,7 +56,7 @@ export function createCompletion(bb: BbPluginApi, store: BotStore, publish: () =
   // thread_completion is created by the bot store's append-only migrations.
   const settingsHandle = bb.settings.define({
     autoComplete: { type: "boolean", label: "Auto-complete idle bot conversations", description: "Hide a bot's conversation once it has been idle for the configured time. Its first conversation is never completed automatically. New activity brings a conversation back.", default: true },
-    autoCompleteAfterHours: { type: "number", label: "Auto-complete after (hours idle)", description: "1–2160 hours. Default 24.", default: 24 },
+    autoCompleteAfterHours: { type: "number", label: "Auto-complete after (hours idle)", description: "1–2160 hours. Default 72 (3 days).", default: 72 },
     autoArchive: { type: "boolean", label: "Auto-archive completed bot conversations", description: "Archive completed conversations (and their children) after the configured number of days. Never archives a bot's first conversation or anything pinned or working.", default: false },
     autoArchiveAfterDays: { type: "number", label: "Auto-archive after (days completed)", description: "0–365 days. 0 archives as soon as a conversation is completed. Default 7.", default: 7 },
   });

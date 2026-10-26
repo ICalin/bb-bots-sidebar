@@ -33,7 +33,7 @@ export interface CompletionSettings {
 
 export const DEFAULT_COMPLETION_SETTINGS: CompletionSettings = {
   autoComplete: true,
-  autoCompleteAfterHours: 24,
+  autoCompleteAfterHours: 72,
   autoArchive: false,
   autoArchiveAfterDays: 7,
 };

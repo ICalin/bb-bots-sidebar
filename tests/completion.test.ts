@@ -86,6 +86,6 @@ describe("auto-archive", () => {
   });
 
   it("clamps invalid settings to safe defaults", () => {
-    expect(normalizeCompletionSettings({ autoCompleteAfterHours: 0, autoArchiveAfterDays: -1, autoArchive: "yes" })).toEqual({ autoComplete: true, autoCompleteAfterHours: 24, autoArchive: false, autoArchiveAfterDays: 7 });
+    expect(normalizeCompletionSettings({ autoCompleteAfterHours: 0, autoArchiveAfterDays: -1, autoArchive: "yes" })).toEqual({ autoComplete: true, autoCompleteAfterHours: 72, autoArchive: false, autoArchiveAfterDays: 7 });
   });
 });

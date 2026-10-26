@@ -11,8 +11,8 @@ async function setup() {
   const bot = await host.create();
   const ids: string[] = [];
   for (let i = 0; i < 3; i++) ids.push(((await host.harness.behavior.callRpc("conversation_create", { botId: bot.id, request: request(PERSONAL_ID) })) as { threadId: string }).threadId);
-  // Make every conversation two days idle; the newest-created is first (main).
-  const old = Date.now() - 2 * DAY;
+  // Make every conversation four days idle; the newest-created is first (main).
+  const old = Date.now() - 4 * DAY;
   ids.forEach((id, index) => host.threads.set(id, { ...host.threads.get(id)!, createdAt: old + index, updatedAt: old + index, latestAttentionAt: old + index }));
   host.threads.set("unassigned", makeThreadResponse({ id: "unassigned", projectId: PERSONAL_ID, createdAt: old, updatedAt: old, latestAttentionAt: old }));
   const archived: string[] = [];

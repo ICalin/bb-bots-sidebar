@@ -188,14 +188,15 @@ in bot state.
   put it first instead (also unfolding the list). Drop an
   existing top-level conversation on its own bot row to move it to the top.
 - Hover a bot conversation row to reveal its **complete** checkbox at the right
-  edge (always visible on touch). Hover the checkbox to reveal **archive** just
-  below it; on touch, archive is in the long-press menu. Archive uses BB's normal
+  edge; it takes no space otherwise, so titles use the full width. Hover the
+  checkbox to reveal **archive** just below it. On touch, both are in the
+  long-press menu. Archive uses BB's normal
   archive action, including children. Chats rows show archive on hover.
 - Completing a conversation (and its children) removes it from the bot's list,
   with Undo in the toast. **N completed** below the list shows them again. New
   activity, a question, or queued input reopens it automatically.
 - In Settings → Plugins → Bots Sidebar: **Auto-complete** idle bot conversations
-  (on, 24 hours) and **Auto-archive** completed ones (off, 7 days; 0 archives
+  (on, 3 days) and **Auto-archive** completed ones (off, 7 days; 0 archives
   immediately). Neither touches a bot's first conversation, pinned conversations,
   or anything working. A parent waits until its whole subtree is idle.
 - Each conversation's leading chevron reveals only its own children, collapsed by

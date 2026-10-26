@@ -101,10 +101,11 @@ or reintroduce hover toolbars when making unrelated changes.
   projects as owned. Keep this label stable when folding; truncate with full hover text.
 - Counts/chevrons never navigate. No Topics/Main's children labels or divider.
   No multi-action hover overlay toolbars. Bot conversation rows end with the complete
-  checkbox (hover/keyboard focus; always on touch), right-aligned across rows. Archive
+  checkbox, shown only on hover/keyboard focus (or when completed) and reserving no
+  width otherwise so titles get the full row; right-aligned across rows. Archive
   is the one exception to "no overlay": a single button revealed directly BELOW the
-  checkbox while it is hovered or keyboard-focused (fine pointers only). Touch gets no
-  inline archive; it stays in the long-press/context menu. Chats rows end with an
+  checkbox while it is hovered or keyboard-focused (fine pointers only). Touch gets neither
+  inline; complete and archive stay in the long-press/context menu. Chats rows end with an
   inline hover archive button. Keep controls outside the navigation link and prevent
   their clicks from navigating or toggling children. Use BB Button/Tooltip and
   the native archive action, which also archives child conversations.
@@ -217,7 +218,7 @@ or reintroduce hover toolbars when making unrelated changes.
   "N completed" toggle below the expanded list. Manually completing covers the subtree;
   un-completing affects only that row. Working rows cannot be completed.
   The first ordered root that is not completed is the bot's main: click target, badge,
-  defaults. Auto-complete (default on, 24 h idle) and auto-archive (default off, N days
+  defaults. Auto-complete (default on, 72 h / 3 days idle) and auto-archive (default off, N days
   after completion; 0 = immediately) are native plugin settings, run every 15 minutes, and
   never touch the main, pinned, or busy conversations. A parent auto-completes only after
   its whole subtree qualifies; auto-archive only archives top-most fully completed subtrees

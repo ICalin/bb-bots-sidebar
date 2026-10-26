@@ -6,7 +6,7 @@ Give recurring work a named specialist without tying its identity to one reposit
 - Per-bot defaults for new conversations: harness, model, reasoning, permissions, starter prompt, and checkout or fresh worktree.
 - A sidebar that groups conversations by bot, keeps active work visible, and folds older chats into expandable trees.
 - Drag-to-bot assignment for existing chats, plus inline complete and archive controls.
-- Completed conversations leave the list; idle bot conversations complete automatically after 24 hours, and completed ones can optionally be archived. A bot's first conversation is never completed or archived automatically.
+- Completed conversations leave the list; idle bot conversations complete automatically after 3 days, and completed ones can optionally be archived. A bot's first conversation is never completed or archived automatically.
 - Bots unfold when you open one of their conversations or when they start working.
 - Running workflows appear as virtual children of the conversation that started them, with their agent threads one click away.
 - Project membership and one optional owner per project to route new conversations. Existing conversation assignments stay intact.

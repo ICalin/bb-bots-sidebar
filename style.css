@@ -183,18 +183,17 @@
   opacity: 1;
   pointer-events: auto;
 }
-/* Right edge of bot rows: complete, with archive revealed directly below it. */
-.conversation-actions { position: relative; display: flex; flex: 0 0 auto; }
-.conversation-complete { opacity: 0; pointer-events: none; }
-.thread-row:hover .conversation-complete,
-.thread-row:has(:focus-visible) .conversation-complete,
-.conversation-complete:focus-visible,
-.conversation-complete[data-completed="true"] {
-  opacity: 1;
-  pointer-events: auto;
+/* Right edge of bot rows: complete, with archive revealed directly below it.
+   Hidden rows reserve no width, so titles use the full row until hover/focus.
+   Touch has no hover: complete and archive live in the long-press menu. */
+.conversation-actions { position: relative; display: none; flex: 0 0 auto; }
+.conversation-complete { opacity: 1; pointer-events: auto; }
+.conversation-complete:disabled { opacity: 0.3; }
+.thread-row:has(> .conversation-actions .conversation-complete[data-completed="true"]) > .conversation-actions { display: flex; }
+@media (hover: hover) and (pointer: fine) {
+  .thread-row:hover > .conversation-actions,
+  .thread-row:has(:focus-visible) > .conversation-actions { display: flex; }
 }
-.thread-row:hover .conversation-complete:disabled,
-.thread-row:has(:focus-visible) .conversation-complete:disabled { opacity: 0.3; }
 .conversation-actions-menu {
   position: absolute;
   top: 100%;
@@ -224,8 +223,7 @@
 }
 .completed-toggle:hover { background: var(--state-hover); color: var(--foreground); }
 @media (hover: none), (pointer: coarse) {
-  .conversation-archive, .bot-new-conversation, .conversation-complete { opacity: 1; pointer-events: auto; }
-  .conversation-complete:disabled { opacity: 0.3; }
+  .conversation-archive, .bot-new-conversation { opacity: 1; pointer-events: auto; }
 }
 .thread-row[aria-current="page"],
 .recent-row[aria-current="page"] {
