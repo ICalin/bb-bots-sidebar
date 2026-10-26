@@ -201,6 +201,9 @@ in bot state.
   or anything working. A parent waits until its whole subtree is idle.
 - Each conversation's leading chevron reveals only its own children, collapsed by
   default (the tooltip gives the count).
+- Every thread's header and Info tab show which bot it belongs to. Pick another bot to
+  move it (with its child conversations), or **No bot** to take it out of the bot. This
+  works whichever sidebar you use.
 - A handoff of a bot conversation (BB's **Continue in new thread** or `bb handoff`)
   stays with that bot and takes the continued conversation's place, so handing off
   the main conversation makes the new thread the main one.

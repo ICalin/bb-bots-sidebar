@@ -7,6 +7,7 @@ import { useConversationReorder } from "./hooks/use-conversation-reorder";
 import { threadActionTarget } from "./lib/thread-action-target";
 import {
   definePluginApp,
+  experimental_THREAD_INFO_ROW_GROUPS,
   experimental_ThreadActionsContextMenu as ThreadActionsContextMenu,
   useSdk,
   useSidebarThreadShortcut,
@@ -62,6 +63,7 @@ import { randomAvatar } from "./lib/appearance";
 import { AvatarAppearance } from "./components/avatar-appearance";
 import { BotIcon } from "./components/bot-icon";
 import { SidebarBotIcon } from "./components/sidebar-bot-icon";
+import { ThreadBotHeaderAction, ThreadBotInfoRow } from "./components/thread-bot-picker";
 import { MEMORY_MAX_CHARS } from "./lib/memory-limit";
 import { emptyLaunchPreset, launchPresetSchema, type LaunchPreset } from "./lib/launch-preset";
 import { LaunchPresetEditor } from "./components/launch-preset-editor";
@@ -125,6 +127,7 @@ function useBotData() {
   const [personalProjectId, setPersonalProjectId] = useState<string | null>(null);
   const [projectOwners, setProjectOwners] = useState<ProjectOwner[]>([]);
   const [completions, setCompletions] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const [detachedThreadIds, setDetachedThreadIds] = useState<ReadonlySet<string>>(() => new Set());
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refreshSequence = useRef(0);
@@ -144,6 +147,7 @@ function useBotData() {
         setPersonalProjectId(result.personalProjectId);
         setProjectOwners(result.projectOwners ?? []);
         setCompletions(new Map((result.completions ?? []).map(({ threadId, completedAt }) => [threadId, completedAt])));
+        setDetachedThreadIds(new Set(result.detachedThreadIds ?? []));
         setLoaded(true);
         setError(null);
         return result;
@@ -161,7 +165,7 @@ function useBotData() {
     previousConnection.current = connectionState;
   }, [connectionState, refresh]);
   useRealtime("project-bots-changed", refresh);
-  return { rpc, bots, hosts, sections, projects, threadBindings, warnings, personalProjectId, projectOwners, completions, loaded, error, refresh };
+  return { rpc, bots, hosts, sections, projects, threadBindings, warnings, personalProjectId, projectOwners, completions, detachedThreadIds, loaded, error, refresh };
 }
 
 function BotEditor({ target, hosts, sections, projects, bots, projectOwners, onClose, onCreate, onUpdate, onCreateSection, onCreateProject, onBrowseProjects }: ProjectCreationActions & {
@@ -640,7 +644,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
   const navigate = useBbNavigate();
   const portalScope = usePortalScopeProps();
   const [conversation, setConversation] = useState<ConversationTarget | null>(null);
-  const { rpc, bots, hosts, sections, projects, threadBindings, warnings, personalProjectId, projectOwners, completions, loaded, error, refresh } = useBotData();
+  const { rpc, bots, hosts, sections, projects, threadBindings, warnings, personalProjectId, projectOwners, completions, detachedThreadIds, loaded, error, refresh } = useBotData();
   const workflowRuns = useWorkflowRunsData();
   // A workflow agent thread is hidden; its starting conversation stands in for it in the tree.
   const treeActiveId = workflowRuns.ownerOf(activeThreadId) ?? activeThreadId;
@@ -682,7 +686,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
     void refresh();
   }, [projectCatalog, refresh]);
   const wakeups = useRef(new Set<string>());
-  const owners = useMemo(() => conversationOwners(sidebar.threads, threadBindings), [sidebar.threads, threadBindings]);
+  const owners = useMemo(() => conversationOwners(sidebar.threads, threadBindings, detachedThreadIds), [sidebar.threads, threadBindings, detachedThreadIds]);
   const assignmentRequests = useRef(new Set<string>());
   const conversationDrop = useConversationDrop((thread, value) => {
     const { botId, placeFirst } = JSON.parse(value) as { botId: string; placeFirst: boolean };
@@ -1005,6 +1009,9 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
 }
 
 export default definePluginApp((app) => {
+  // These register whichever thread list is active, so any thread can be assigned.
+  app.slots.experimental_threadHeaderAction({ id: "thread-bot", title: "Bot", component: ThreadBotHeaderAction });
+  app.slots.experimental_threadInfoRow({ id: "thread-bot", group: experimental_THREAD_INFO_ROW_GROUPS.thread, component: ThreadBotInfoRow });
   app.slots.experimental_threadList({
     id: "bot-projects",
     title: "Bots Sidebar",

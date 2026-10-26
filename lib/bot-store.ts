@@ -13,6 +13,8 @@ export function createBotStore(bb: BbPluginApi) {
     "CREATE INDEX bot_project_owners_by_bot ON bot_project_owners(bot_id)",
     "ALTER TABLE bot_starts ADD COLUMN project_id TEXT",
     "CREATE TABLE thread_completion (thread_id TEXT PRIMARY KEY, completed_at INTEGER, reopened_at INTEGER)",
+    // A user's explicit "No bot": stops parent/fork inheritance at this thread.
+    "CREATE TABLE thread_detached (thread_id TEXT PRIMARY KEY, detached_at INTEGER NOT NULL)",
   ]);
   const legacySchema = metadataSchema.omit({ stateReady: true, legacyHomeProjectId: true }).extend({ homePath: z.string(), homeProjectId: z.string().nullable() }).strict();
   const raw = (id: string) => db.prepare("SELECT data FROM bots WHERE id = ?").get(id) as { data: string } | undefined;
@@ -53,7 +55,9 @@ export function createBotStore(bb: BbPluginApi) {
     const existing = owner(threadId);
     if (existing && existing !== botId) throw new Error("Conversation already belongs to another bot");
     db.prepare("INSERT OR IGNORE INTO bot_threads(thread_id,bot_id) VALUES (?,?)").run(threadId, botId);
+    db.prepare("DELETE FROM thread_detached WHERE thread_id = ?").run(threadId);
   };
+  const detached = (threadId: string) => db.prepare("SELECT 1 FROM thread_detached WHERE thread_id = ?").get(threadId) !== undefined;
   const ownerQuery = "SELECT p.project_id AS projectId, p.bot_id AS botId, p.assigned_at AS assignedAt FROM bot_project_owners p JOIN bots b ON b.id = p.bot_id WHERE EXISTS (SELECT 1 FROM json_each(b.data, '$.linkedProjectIds') j WHERE j.value = p.project_id)";
   const rawProjectOwner = (projectId: string) => db.prepare("SELECT bot_id AS botId FROM bot_project_owners WHERE project_id = ?").get(projectId) as { botId: string } | undefined;
   const projectOwner = (projectId: string) => db.prepare(`${ownerQuery} AND p.project_id = ?`).get(projectId) as ProjectOwnership | undefined;
@@ -77,7 +81,38 @@ export function createBotStore(bb: BbPluginApi) {
     }).immediate();
   }
   return {
-    get, list, save, state, setState, owner, bind, projectOwner, projectOwners, ownedProjects, saveWithProjects,
+    get, list, save, state, setState, owner, bind, detached, projectOwner,
+    detachedIds: () => (db.prepare("SELECT thread_id AS threadId FROM thread_detached ORDER BY thread_id").all() as { threadId: string }[]).map((row) => row.threadId),
+    /**
+     * The user's explicit choice of bot for a conversation (and the descendants that
+     * moved with it). Moving or detaching is only ever this deliberate action; routing
+     * never steals. Null detaches the conversation so it no longer inherits a bot.
+     */
+    reassign(threadId: string, threadIds: readonly string[], botId: string | null, projectId: string | null) {
+      return db.transaction(() => {
+        const target = botId ? get(botId) : null;
+        if (botId && !target) throw new Error("Bot no longer exists");
+        const moving = new Set([threadId, ...threadIds]);
+        const previous = new Set([...moving].map(owner).filter((id): id is string => Boolean(id) && id !== botId));
+        for (const id of previous) {
+          const bot = get(id); if (!bot?.threadOrder?.some((entry) => moving.has(entry))) continue;
+          save({ ...bot, threadOrder: bot.threadOrder.filter((entry) => !moving.has(entry)), updatedAt: nextTimestamp(bot.updatedAt) });
+        }
+        const remove = db.prepare("DELETE FROM bot_threads WHERE thread_id = ?");
+        for (const id of moving) remove.run(id);
+        let joined = false;
+        if (target) {
+          joined = projectId !== null && !target.linkedProjectIds.includes(projectId);
+          if (joined) saveWithProjects({ ...target, linkedProjectIds: [...target.linkedProjectIds, projectId!], updatedAt: nextTimestamp(target.updatedAt) });
+          for (const id of moving) bind(id, target.id);
+        } else {
+          db.prepare("INSERT INTO thread_detached(thread_id,detached_at) VALUES (?,?) ON CONFLICT(thread_id) DO UPDATE SET detached_at=excluded.detached_at").run(threadId, Date.now());
+          const undetach = db.prepare("DELETE FROM thread_detached WHERE thread_id = ?");
+          for (const id of threadIds) if (id !== threadId) undetach.run(id);
+        }
+        return { joined, previous: [...previous] };
+      }).immediate();
+    }, projectOwners, ownedProjects, saveWithProjects,
     changeProjectRole(id: string, projectId: string, action: "join" | "leave" | "own" | "release") {
       return db.transaction(() => {
         const bot = get(id); if (!bot) throw new Error("Bot no longer exists");

@@ -51,6 +51,7 @@ export default async function plugin(bb: BbPluginApi) {
   function owner(context: { id: string; parentThreadId?: string | null; sourceThreadId?: string | null }) {
     const explicit = store.owner(context.id);
     if (explicit) return explicit;
+    if (store.detached(context.id)) return null;
     const inherited = (context.parentThreadId && store.owner(context.parentThreadId)) || (context.sourceThreadId && store.owner(context.sourceThreadId));
     return inherited || null;
   }
@@ -61,6 +62,7 @@ export default async function plugin(bb: BbPluginApi) {
     while (current && !chain.includes(current)) {
       const explicit = store.owner(current);
       if (explicit) { botId = explicit; break; }
+      if (store.detached(current)) break;
       const thread = await bb.sdk.threads.get({ threadId: current });
       chain.push(current);
       botId = (thread.parentThreadId && store.owner(thread.parentThreadId)) || (thread.sourceThreadId && store.owner(thread.sourceThreadId)) || null;
@@ -297,7 +299,7 @@ export default async function plugin(bb: BbPluginApi) {
       personalId = personal.id;
       const bots = store.list();
       const legacyHomes = new Set(bots.map((bot) => bot.legacyHomeProjectId));
-      return { bots, projectOwners: store.projectOwners().map(({ projectId, botId }) => ({ projectId, botId })), warnings: [...warnings, ...state.warnings()], personalProjectId: personalId, threadBindings: store.bindings(), completions: completion.completions(), sections: store.sections(), hosts: hosts.map((host) => ({ id: host.id, name: host.name, connected: host.status === "connected" })), projects: projects.filter((project) => project.kind === "standard" && !legacyHomes.has(project.id)).map((project) => ({ id: project.id, name: project.name })) };
+      return { bots, projectOwners: store.projectOwners().map(({ projectId, botId }) => ({ projectId, botId })), warnings: [...warnings, ...state.warnings()], personalProjectId: personalId, threadBindings: store.bindings(), detachedThreadIds: store.detachedIds(), completions: completion.completions(), sections: store.sections(), hosts: hosts.map((host) => ({ id: host.id, name: host.name, connected: host.status === "connected" })), projects: projects.filter((project) => project.kind === "standard" && !legacyHomes.has(project.id)).map((project) => ({ id: project.id, name: project.name })) };
     },
     bot_create: ({ name, role, hostId, avatar, sectionId, linkedProjectIds, ownedProjectIds, soul, memory, settings, launchPreset }) => serial("registry", async () => {
       await importLegacy(); await validateLinks(linkedProjectIds); if (ownedProjectIds) await validateLinks(ownedProjectIds); validateSection(sectionId);
@@ -400,6 +402,43 @@ export default async function plugin(bb: BbPluginApi) {
       await bb.sdk.threads.update({ threadId, parentThreadId });
       publish();
       return { ok: true } as const;
+    }),
+    thread_bot: async ({ threadId }) => {
+      const botId = await resolveOwner(threadId, false);
+      return {
+        botId, explicit: Boolean(botId) && store.owner(threadId) === botId, detached: store.detached(threadId),
+        bots: store.list().map((bot) => ({ id: bot.id, name: bot.name, role: bot.role, avatar: bot.avatar, hidden: bot.hiddenUntilActivity })),
+      };
+    },
+    // The user's explicit choice in the thread header or Info tab. Unlike drag/dialog
+    // assignment it may move a conversation between bots or detach it ("No bot"); the
+    // conversation's descendants in the old bot move with it.
+    conversation_set_bot: ({ threadId, botId }) => serial("registry", async () => {
+      const thread = await bb.sdk.threads.get({ threadId });
+      if (thread.archivedAt || thread.deletedAt) throw new Error("Restore this conversation before changing its bot.");
+      const from = await resolveOwner(threadId, false);
+      if (from === botId) return { ok: true as const, threadIds: [] };
+      const run = async () => {
+        const target = botId ? store.require(botId) : null;
+        let projectToJoin: string | null = null;
+        if (target && thread.projectId !== await personalProjectId() && thread.projectId !== target.legacyHomeProjectId && !target.linkedProjectIds.includes(thread.projectId)) {
+          await validateLinks([thread.projectId]); projectToJoin = thread.projectId;
+        }
+        const descendants: string[] = [];
+        if (from) {
+          const rows = (await listBotConversations(bb, store.require(from), resolveOwner)).rows;
+          const inSubtree = new Set([threadId]);
+          for (let grew = true; grew;) {
+            grew = false;
+            for (const row of rows) if (row.parentThreadId && inSubtree.has(row.parentThreadId) && !inSubtree.has(row.id)) { inSubtree.add(row.id); descendants.push(row.id); grew = true; }
+          }
+        }
+        const result = store.reassign(threadId, descendants, botId, projectToJoin);
+        if (result.joined && target) await state.mirror(store.require(target.id));
+        publish();
+        return { ok: true as const, threadIds: [threadId, ...descendants] };
+      };
+      return from ? serial(from, () => (botId ? serial(botId, run) : run())) : botId ? serial(botId, run) : run();
     }),
     conversation_assign: ({ botId, threadId, placeFirst }) => serial("registry", () => serial(botId, async () => {
       const bot = store.require(botId); const thread = await bb.sdk.threads.get({ threadId });

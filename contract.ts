@@ -32,6 +32,16 @@ export const metadataSchema = z.object({
 export type BotMetadata = z.infer<typeof metadataSchema>;
 export const sectionSchema = z.object({ id, name: z.string().min(1).max(80), order: z.number().int().nonnegative() }).strict();
 export type BotSection = z.infer<typeof sectionSchema>;
+/** Which bot a thread belongs to, for the thread Info row and header picker. */
+export const threadBotSchema = z.object({
+  botId: id.nullable(),
+  /** False when the bot comes from the parent or fork source rather than a binding. */
+  explicit: z.boolean(),
+  /** The user chose "No bot", so the thread no longer inherits one. */
+  detached: z.boolean(),
+  bots: z.array(z.object({ id, name: z.string(), role: z.string(), avatar: avatarSchema, hidden: z.boolean() }).strict()),
+}).strict();
+export type ThreadBot = z.infer<typeof threadBotSchema>;
 const hostSchema = z.object({ id, name: z.string(), connected: z.boolean() }).strict();
 const projectSchema = z.object({ id, name: z.string() }).strict();
 const hostPathSchema = z.string().trim().min(1).max(4096).refine((value) => !value.includes("\0"), "Path must not contain NUL");
@@ -93,8 +103,10 @@ export const workflowRunSchema = z.object({
 }).strict();
 
 export const rpcContract = defineRpcContract({
+  thread_bot: { input: z.object({ threadId: id }).strict(), output: threadBotSchema },
+  conversation_set_bot: { input: z.object({ threadId: id, botId: id.nullable() }).strict(), output: z.object({ ok: z.literal(true), threadIds: z.array(id) }).strict() },
   workflow_runs: { input: z.null(), output: z.object({ runs: z.array(workflowRunSchema) }).strict() },
-  bots_list: { input: z.null(), output: z.object({ bots: z.array(metadataSchema), hosts: z.array(hostSchema), sections: z.array(sectionSchema), projects: z.array(projectSchema), threadBindings: z.array(z.object({ threadId: id, botId: id }).strict()), warnings: z.array(z.string()), personalProjectId: id, projectOwners: z.array(projectOwnerSchema).optional(), completions: z.array(z.object({ threadId: id, completedAt: z.number() }).strict()).optional() }).strict() },
+  bots_list: { input: z.null(), output: z.object({ bots: z.array(metadataSchema), hosts: z.array(hostSchema), sections: z.array(sectionSchema), projects: z.array(projectSchema), threadBindings: z.array(z.object({ threadId: id, botId: id }).strict()), warnings: z.array(z.string()), personalProjectId: id, projectOwners: z.array(projectOwnerSchema).optional(), completions: z.array(z.object({ threadId: id, completedAt: z.number() }).strict()).optional(), detachedThreadIds: z.array(id).optional() }).strict() },
   project_browse: { input: projectBrowseInputSchema, output: projectBrowseOutputSchema },
   project_create: { input: projectCreateInputSchema, output: projectSchema },
   bot_create: { input: z.object({ ...editFields, hostId: id, launchPreset: launchPresetSchema.nullable().optional() }).strict(), output: metadataSchema },

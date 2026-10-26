@@ -8,6 +8,7 @@ Give recurring work a named specialist without tying its identity to one reposit
 - Drag-to-bot assignment for existing chats, plus inline complete and archive controls.
 - Completed conversations leave the list; idle bot conversations complete automatically after 3 days, and completed ones can optionally be archived. A bot's first conversation is never completed or archived automatically.
 - Bots unfold when you open one of their conversations or when they start working.
+- Change a thread's bot, or remove it from one, from the thread header or its Info tab.
 - Handing off a bot conversation keeps the new thread with the same bot, in the same place.
 - Running workflows appear as virtual children of the conversation that started them, with their agent threads one click away.
 - Project membership and one optional owner per project to route new conversations. Existing conversation assignments stay intact.

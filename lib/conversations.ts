@@ -13,6 +13,8 @@ export function isWorking(thread: PluginSidebarThread): boolean {
 export function conversationOwners(
   threads: readonly PluginSidebarThread[],
   bindings: readonly { threadId: string; botId: string }[],
+  /** Threads the user set to "No bot": inheritance stops there. */
+  detached: ReadonlySet<string> = new Set(),
 ): Map<string, string> {
   const direct = new Map(bindings.map(({ threadId, botId }) => [threadId, botId]));
   const byId = new Map(threads.map((thread) => [thread.id, thread]));
@@ -24,6 +26,7 @@ export function conversationOwners(
       visited.add(id);
       const owner = direct.get(id);
       if (owner) { owners.set(thread.id, owner); break; }
+      if (detached.has(id)) break;
       id = byId.get(id)?.parentThreadId ?? null;
     }
   }

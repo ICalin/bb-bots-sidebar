@@ -203,6 +203,13 @@ or reintroduce hover toolbars when making unrelated changes.
   tooltip on overflow. Keep an idle first conversation visually distinct from busy others.
   Waiting takes precedence over working; preserve unread errors, ignore archived
   activity, and disable all animation under reduced motion. Counts never navigate.
+- Thread bot picker: every thread's header (`experimental_threadHeaderAction`) and Info
+  tab (`experimental_threadInfoRow`, thread group) show its bot as a "No bot"/bot select,
+  registered regardless of which thread list is active. This explicit user choice is the
+  one place a conversation may move between bots (`conversation_set_bot`): its subtree
+  in the old bot moves with it, the target joins a work project as Member, and main
+  pointers stay. "No bot" writes `thread_detached`, which stops parent/fork inheritance on
+  server and client until any explicit assignment clears it. Routing never steals.
 - Handoffs: a new top-level thread whose FIRST message is BB's native handoff
   (`Continue from @thread:<id>`) or the handoff plugin's `handoff-<id>-<ts>.md`
   attachment joins the continued thread's bot (at creation via `titleFallback`, or at
