@@ -210,6 +210,10 @@ or reintroduce hover toolbars when making unrelated changes.
   in the old bot moves with it, the target joins a work project as Member, and main
   pointers stay. "No bot" writes `thread_detached`, which stops parent/fork inheritance on
   server and client until any explicit assignment clears it. Routing never steals.
+- Bot prompt preview: an Info tab section (`experimental_threadInfoSection`, group "0_bot",
+  directly below the details rows) shows the bot's system-prompt additions via
+  `thread_bot_prompt`, built by the same `botAgentConfiguration` as `bb.agents.configure`.
+  Each block starts folded; never fork that text into a second formatter.
 - Handoffs: a new top-level thread whose FIRST message is BB's native handoff
   (`Continue from @thread:<id>`) or the handoff plugin's `handoff-<id>-<ts>.md`
   attachment joins the continued thread's bot (at creation via `titleFallback`, or at

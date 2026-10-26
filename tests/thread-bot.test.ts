@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { makePluginAgentConfigurationContext, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { backend, PERSONAL_ID, project } from "./backend-fixture";
 import { conversationOwners } from "../lib/conversations";
-import type { ThreadBot } from "../contract";
+import type { ThreadBot, ThreadBotPrompt } from "../contract";
+import { BOT_GUIDANCE } from "../lib/bot-instructions";
 
 const instances: Awaited<ReturnType<typeof backend>>[] = [];
 afterEach(async () => { await Promise.all(instances.splice(0).map((host) => host.harness.lifecycle.dispose())); });
@@ -64,5 +65,17 @@ describe("choosing a thread's bot", () => {
     expect(await call(host, "conversation_set_bot", { threadId: "chat", botId: atlas.id })).toEqual({ ok: true, threadIds: ["chat"] });
     expect(host.store.require(atlas.id).linkedProjectIds).toEqual(["other"]);
     expect(await call(host, "conversation_set_bot", { threadId: "chat", botId: atlas.id })).toEqual({ ok: true, threadIds: [] });
+  });
+
+  it("previews exactly the prompt additions the agent configuration gives the thread", async () => {
+    const host = await setup(); const atlas = await host.create("Atlas", ["project"]);
+    addThread(host, "chat", "project"); addThread(host, "child", "project", "chat"); addThread(host, "loose", "project");
+    host.store.bind("chat", atlas.id);
+    const config = await host.harness.behavior.resolveAgentConfiguration(makePluginAgentConfigurationContext({ thread: { id: "child", parentThreadId: "chat" }, project: (await host.bb.sdk.projects.list()).find((entry) => entry.id === "project")! }));
+    const prompt = await call(host, "thread_bot_prompt", { threadId: "child" }) as ThreadBotPrompt;
+    expect(prompt).toMatchObject({ botId: atlas.id, tools: config.tools.map((tool: { name: string }) => tool.name), skills: config.skills });
+    expect(prompt.sections).toEqual([{ id: "bot", title: "Bot context", text: config.instructions }, { id: "tools", title: "Tool guidance", text: BOT_GUIDANCE }]);
+    expect(prompt.sections[0]!.text).toContain("# Bot: Atlas");
+    expect(await call(host, "thread_bot_prompt", { threadId: "loose" })).toEqual({ botId: null, tools: [], skills: [], sections: [] });
   });
 });

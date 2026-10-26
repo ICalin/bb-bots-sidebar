@@ -243,10 +243,13 @@ export default async function plugin(bb: BbPluginApi) {
     });
   }
   const contextOwner = (ctx: PluginAgentConfigurationContext) => owner(ctx.thread);
+  // One source for the agent configuration and the Info tab's prompt preview.
+  const botAgentConfiguration = (bot: BotMetadata, project: PluginAgentConfigurationContext["project"]) =>
+    ({ tools: ["bot_read_state", "bot_update_state"], skills: ["bots-sidebar"], instructions: botInstructions(bot, botProjectContext(bot, project, store)) });
   bb.agents.configure((ctx) => {
     const botId = contextOwner(ctx);
     const bot = botId ? store.get(botId) : null;
-    return bot ? { tools: ["bot_read_state", "bot_update_state"], skills: ["bots-sidebar"], instructions: botInstructions(bot, botProjectContext(bot, ctx.project, store)) } : { tools: [], skills: [] };
+    return bot ? botAgentConfiguration(bot, ctx.project) : { tools: [], skills: [] };
   });
   bb.agents.registerTool({
     name: "bot_read_state", description: "Read this bot's embedded identity and revision, memory facts, settings, or linked/available projects. Supply only target: identity, memory, settings, or project. State is managed privately by BB and is independent of the current machine or working directory.",
@@ -409,6 +412,19 @@ export default async function plugin(bb: BbPluginApi) {
         botId, explicit: Boolean(botId) && store.owner(threadId) === botId, detached: store.detached(threadId),
         bots: store.list().map((bot) => ({ id: bot.id, name: bot.name, role: bot.role, avatar: bot.avatar, hidden: bot.hiddenUntilActivity })),
       };
+    },
+    thread_bot_prompt: async ({ threadId }) => {
+      const botId = await resolveOwner(threadId, false);
+      const bot = botId ? store.get(botId) : undefined;
+      if (!bot) return { botId: null, tools: [], skills: [], sections: [] };
+      const thread = await bb.sdk.threads.get({ threadId });
+      const project = (await bb.sdk.projects.list({ includePersonal: true })).find((entry) => entry.id === thread.projectId);
+      if (!project) throw new Error("This conversation's project is unavailable.");
+      const config = botAgentConfiguration(bot, project);
+      return { botId: bot.id, tools: config.tools, skills: config.skills, sections: [
+        { id: "bot" as const, title: "Bot context", text: config.instructions },
+        { id: "tools" as const, title: "Tool guidance", text: BOT_GUIDANCE },
+      ] };
     },
     // The user's explicit choice in the thread header or Info tab. Unlike drag/dialog
     // assignment it may move a conversation between bots or detach it ("No bot"); the

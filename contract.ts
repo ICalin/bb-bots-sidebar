@@ -42,6 +42,15 @@ export const threadBotSchema = z.object({
   bots: z.array(z.object({ id, name: z.string(), role: z.string(), avatar: avatarSchema, hidden: z.boolean() }).strict()),
 }).strict();
 export type ThreadBot = z.infer<typeof threadBotSchema>;
+/** What the thread's bot adds to the agent's system prompt, exactly as configured. */
+export const threadBotPromptSchema = z.object({
+  botId: id.nullable(),
+  tools: z.array(z.string()),
+  skills: z.array(z.string()),
+  /** Dynamic per-conversation instructions, then the static guidance BB appends with the bot's tools. */
+  sections: z.array(z.object({ id: z.enum(["bot", "tools"]), title: z.string(), text: z.string() }).strict()),
+}).strict();
+export type ThreadBotPrompt = z.infer<typeof threadBotPromptSchema>;
 const hostSchema = z.object({ id, name: z.string(), connected: z.boolean() }).strict();
 const projectSchema = z.object({ id, name: z.string() }).strict();
 const hostPathSchema = z.string().trim().min(1).max(4096).refine((value) => !value.includes("\0"), "Path must not contain NUL");
@@ -104,6 +113,7 @@ export const workflowRunSchema = z.object({
 
 export const rpcContract = defineRpcContract({
   thread_bot: { input: z.object({ threadId: id }).strict(), output: threadBotSchema },
+  thread_bot_prompt: { input: z.object({ threadId: id }).strict(), output: threadBotPromptSchema },
   conversation_set_bot: { input: z.object({ threadId: id, botId: id.nullable() }).strict(), output: z.object({ ok: z.literal(true), threadIds: z.array(id) }).strict() },
   workflow_runs: { input: z.null(), output: z.object({ runs: z.array(workflowRunSchema) }).strict() },
   bots_list: { input: z.null(), output: z.object({ bots: z.array(metadataSchema), hosts: z.array(hostSchema), sections: z.array(sectionSchema), projects: z.array(projectSchema), threadBindings: z.array(z.object({ threadId: id, botId: id }).strict()), warnings: z.array(z.string()), personalProjectId: id, projectOwners: z.array(projectOwnerSchema).optional(), completions: z.array(z.object({ threadId: id, completedAt: z.number() }).strict()).optional(), detachedThreadIds: z.array(id).optional() }).strict() },

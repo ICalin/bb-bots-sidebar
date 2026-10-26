@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { experimental_DetailRow as DetailRow, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
+import { experimental_DetailRow as DetailRow, experimental_InfoSection as InfoSection, useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import type { ExperimentalThreadInfoProps, PluginThreadHeaderActionProps } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import type { rpcContract, ThreadBot } from "../contract";
+import type { rpcContract, ThreadBot, ThreadBotPrompt } from "../contract";
 import { BotIcon } from "./bot-icon";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger } from "./ui/select";
 import { cn } from "../lib/utils";
@@ -102,4 +102,50 @@ export function ThreadBotHeaderAction({ threadId, isCompactViewport }: PluginThr
 /** Thread Info tab: the bot beside BB's own Parent row. */
 export function ThreadBotInfoRow({ threadId }: ExperimentalThreadInfoProps) {
   return <DetailRow label="Bot" icon="Bot"><ThreadBotSelect threadId={threadId} variant="info" /></DetailRow>;
+}
+
+/** What the thread's bot adds to the agent's system prompt, kept live like the picker. */
+function useThreadBotPrompt(threadId: string) {
+  const rpc = useRpc<typeof rpcContract>();
+  const [value, setValue] = useState<ThreadBotPrompt | null>(null);
+  const sequence = useRef(0);
+  const refresh = useCallback(() => {
+    const current = ++sequence.current;
+    return rpc.call("thread_bot_prompt", { threadId }).then(
+      (result) => { if (current === sequence.current) setValue(result); },
+      () => { /* Keep the last known prompt. */ },
+    );
+  }, [rpc, threadId]);
+  useEffect(() => { setValue(null); void refresh(); return () => { sequence.current++; }; }, [refresh]);
+  useRealtime(BOTS_CHANGED, () => { void refresh(); });
+  return value;
+}
+
+function PromptBlock({ title, text }: { title: string; text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="bot-prompt-block">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-1.5 rounded-sm py-1 text-left text-xs text-muted-foreground hover:text-foreground">
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" className={cn("shrink-0 transition-transform", open && "rotate-90")}><path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        <span className="text-foreground">{title}</span>
+        <span className="tabular-nums">{text.length.toLocaleString()} chars</span>
+      </button>
+      {open ? <pre className="mb-1 ml-[18px] max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-2 font-mono text-[11px] leading-relaxed text-foreground">{text}</pre> : null}
+    </div>
+  );
+}
+
+/** Thread Info tab: the system-prompt additions from the thread's bot, each block folded. */
+export function ThreadBotPromptSection({ threadId }: ExperimentalThreadInfoProps) {
+  const value = useThreadBotPrompt(threadId);
+  if (!value?.botId) return null;
+  return (
+    <InfoSection label="Bot prompt">
+      <div className="flex flex-col">
+        {value.sections.map((section) => <PromptBlock key={section.id} title={section.title} text={section.text} />)}
+        <p className="mt-1 text-[11px] text-muted-foreground">Tools: {value.tools.join(", ")} · Skill: {value.skills.join(", ")}</p>
+      </div>
+    </InfoSection>
+  );
 }

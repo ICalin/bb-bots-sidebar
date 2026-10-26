@@ -63,7 +63,7 @@ import { randomAvatar } from "./lib/appearance";
 import { AvatarAppearance } from "./components/avatar-appearance";
 import { BotIcon } from "./components/bot-icon";
 import { SidebarBotIcon } from "./components/sidebar-bot-icon";
-import { ThreadBotHeaderAction, ThreadBotInfoRow } from "./components/thread-bot-picker";
+import { ThreadBotHeaderAction, ThreadBotInfoRow, ThreadBotPromptSection } from "./components/thread-bot-picker";
 import { MEMORY_MAX_CHARS } from "./lib/memory-limit";
 import { emptyLaunchPreset, launchPresetSchema, type LaunchPreset } from "./lib/launch-preset";
 import { LaunchPresetEditor } from "./components/launch-preset-editor";
@@ -1012,6 +1012,8 @@ export default definePluginApp((app) => {
   // These register whichever thread list is active, so any thread can be assigned.
   app.slots.experimental_threadHeaderAction({ id: "thread-bot", title: "Bot", component: ThreadBotHeaderAction });
   app.slots.experimental_threadInfoRow({ id: "thread-bot", group: experimental_THREAD_INFO_ROW_GROUPS.thread, component: ThreadBotInfoRow });
+  // "0_bot" sorts before bb's own sections, so it sits right below the details rows.
+  app.slots.experimental_threadInfoSection({ id: "thread-bot-prompt", group: "0_bot", component: ThreadBotPromptSection });
   app.slots.experimental_threadList({
     id: "bot-projects",
     title: "Bots Sidebar",
