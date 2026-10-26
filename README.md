@@ -201,6 +201,9 @@ in bot state.
   or anything working. A parent waits until its whole subtree is idle.
 - Each conversation's leading chevron reveals only its own children, collapsed by
   default (the tooltip gives the count).
+- A handoff of a bot conversation (BB's **Continue in new thread** or `bb handoff`)
+  stays with that bot and takes the continued conversation's place, so handing off
+  the main conversation makes the new thread the main one.
 - A running BB workflow shows as a virtual child of the conversation that started
   it, e.g. **category-investigation · 3 running**. Click it to list its live agent
   threads and open one. A new run unfolds its conversation once. Opening one of a bot's conversations, or the bot starting

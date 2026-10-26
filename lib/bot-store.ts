@@ -102,15 +102,18 @@ export function createBotStore(bb: BbPluginApi) {
         return saveWithProjects(update(current), desiredOwners);
       }).immediate();
     },
-    adoptInherited(threadId: string, botId: string, projectId: string | null, placeFirst = false, appendAfter?: string[]) {
+    adoptInherited(threadId: string, botId: string, projectId: string | null, placeFirst = false, appendAfter?: string[], placeBefore?: string) {
       return db.transaction(() => {
         const existing = owner(threadId);
         if (existing) return { botId: existing, changed: false, joined: false };
         const bot = get(botId); if (!bot) throw new Error("Bot no longer exists");
         const joined = projectId !== null && !bot.linkedProjectIds.includes(projectId);
-        if (joined || placeFirst || appendAfter) saveWithProjects({ ...bot,
+        const order = (bot.threadOrder ?? []).filter(id => id !== threadId);
+        const beforeIndex = placeBefore ? order.indexOf(placeBefore) : -1;
+        if (joined || placeFirst || appendAfter || beforeIndex >= 0) saveWithProjects({ ...bot,
           linkedProjectIds: joined ? [...bot.linkedProjectIds, projectId!] : bot.linkedProjectIds,
           ...(placeFirst ? { threadOrder: [threadId, ...(bot.threadOrder ?? []).filter(id => id !== threadId)] } : {}),
+          ...(beforeIndex >= 0 ? { threadOrder: [...order.slice(0, beforeIndex), threadId, ...order.slice(beforeIndex)] } : {}),
           ...(appendAfter ? { threadOrder: [...new Set([...(bot.threadOrder ?? []), ...appendAfter].filter(id => id !== threadId)), threadId] } : {}),
           updatedAt: nextTimestamp(bot.updatedAt),
         });

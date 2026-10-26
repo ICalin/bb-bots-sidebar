@@ -9,6 +9,7 @@ import { createLegacyImporter } from "./lib/migrate-bots";
 import { browseProjectDirectory, createWorkProject } from "./lib/project-creation";
 import { registerBotsCli } from "./lib/bots-cli";
 import { createWorkflowRuns } from "./lib/workflow-runs-server";
+import { handoffSourceFromText, handoffSourceThreadId } from "./lib/handoff-source";
 import { registerBotMentions } from "./lib/bot-mentions";
 import { listBotConversations } from "./lib/bot-conversations";
 import { botProjectContext } from "./lib/project-context";
@@ -127,7 +128,23 @@ export default async function plugin(bb: BbPluginApi) {
     }));
   }
   type RoutingThread = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;
-  async function routeNewThread(thread: RoutingThread, atCreation: boolean) {
+  async function projectToJoinFor(thread: RoutingThread, atCreation: boolean) {
+    if (!atCreation && thread.status !== "pending") return null;
+    const projects = await bb.sdk.projects.list();
+    const legacyHome = store.list().some((bot) => bot.legacyHomeProjectId === thread.projectId);
+    return !legacyHome && projects.some((project) => project.id === thread.projectId && project.kind === "standard") ? thread.projectId : null;
+  }
+  /** The top-level conversation a handoff continues, so the handoff can take its slot. */
+  async function conversationRoot(threadId: string) {
+    let current = threadId;
+    for (let depth = 0; depth < 32; depth++) {
+      const parent = (await bb.sdk.threads.get({ threadId: current }).catch(() => null))?.parentThreadId;
+      if (!parent) return current;
+      current = parent;
+    }
+    return current;
+  }
+  async function routeNewThread(thread: RoutingThread, atCreation: boolean, handoffFrom: string | null = null) {
     const existing = store.owner(thread.id);
     if (existing) return existing;
     // Our creation request carries a durable explicit choice. A fire-and-forget
@@ -135,16 +152,22 @@ export default async function plugin(bb: BbPluginApi) {
     if (atCreation && thread.originPluginId === bb.pluginId) return null;
     const inherited = thread.parentThreadId || thread.sourceThreadId ? await resolveOwner(thread.id, false) : null;
     if (inherited) {
-      let projectToJoin: string | null = null;
-      if (atCreation || thread.status === "pending") {
-        const projects = await bb.sdk.projects.list();
-        const legacyHome = store.list().some((bot) => bot.legacyHomeProjectId === thread.projectId);
-        if (!legacyHome && projects.some((project) => project.id === thread.projectId && project.kind === "standard")) projectToJoin = thread.projectId;
-      }
-      const adopted = store.adoptInherited(thread.id, inherited, projectToJoin);
+      const adopted = store.adoptInherited(thread.id, inherited, await projectToJoinFor(thread, atCreation));
       if (adopted.joined) await state.mirror(store.require(adopted.botId));
       if (adopted.changed) publish();
       return adopted.botId;
+    }
+    // A handoff of a bot conversation continues as that bot, taking the continued
+    // conversation's place in the order (so a handoff of the main becomes main).
+    // Only brand-new top-level threads qualify; a later mention never reassigns.
+    if (handoffFrom && handoffFrom !== thread.id && !thread.parentThreadId && (atCreation || thread.status === "pending")) {
+      const source = await resolveOwner(handoffFrom, false).catch(() => null);
+      if (source) {
+        const adopted = store.adoptInherited(thread.id, source, await projectToJoinFor(thread, atCreation), false, undefined, await conversationRoot(handoffFrom));
+        if (adopted.joined) await state.mirror(store.require(adopted.botId));
+        if (adopted.changed) publish();
+        return adopted.botId;
+      }
     }
     if (thread.originPluginId === bb.pluginId || (!atCreation && thread.status !== "pending")) return null;
     const assigned = store.bindProjectDefault(thread.id, thread.projectId, thread.createdAt);
@@ -253,10 +276,10 @@ export default async function plugin(bb: BbPluginApi) {
       else if (start.projectId !== ctx.thread.projectId) throw new Error("Bot conversation start belongs to a different project");
       store.finishStart(token, ctx.thread.id); publish(); return { action: "proceed" };
     }
-    await routeNewThread(ctx.thread, false);
+    await routeNewThread(ctx.thread, false, handoffSourceThreadId(ctx.input.blocks, ctx.thread.originPluginId));
     return { action: "proceed" };
   });
-  bb.events.on("thread.created", async ({ thread }) => { await routeNewThread(thread, true); });
+  bb.events.on("thread.created", async ({ thread }) => { await routeNewThread(thread, true, handoffSourceFromText(thread.titleFallback)); });
 
   registerBotsCli(bb, store, resolveOwner, completion.records);
   registerBotMentions(bb, store);

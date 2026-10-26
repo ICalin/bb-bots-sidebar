@@ -203,6 +203,12 @@ or reintroduce hover toolbars when making unrelated changes.
   tooltip on overflow. Keep an idle first conversation visually distinct from busy others.
   Waiting takes precedence over working; preserve unread errors, ignore archived
   activity, and disable all animation under reduced motion. Counts never navigate.
+- Handoffs: a new top-level thread whose FIRST message is BB's native handoff
+  (`Continue from @thread:<id>`) or the handoff plugin's `handoff-<id>-<ts>.md`
+  attachment joins the continued thread's bot (at creation via `titleFallback`, or at
+  first dispatch while `pending`), placed just before the continued root in
+  `threadOrder` so a handoff of the main becomes main. Never reassign on later mentions,
+  for non-pending threads, or from unassigned chats (project default applies instead).
 - Workflows: live BB workflow runs appear as virtual child rows of the conversation that
   started them (after real children; not threads, no complete/archive). The source is
   the workflows plugin's hidden agent threads (`originPluginId: "workflows"`,
