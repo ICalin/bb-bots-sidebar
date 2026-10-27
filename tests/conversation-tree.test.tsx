@@ -1,3 +1,4 @@
+import { expandBot } from "./select-helper";
 // @vitest-environment jsdom
 import { useState } from "react";
 import { afterEach, expect, it } from "vitest";
@@ -31,7 +32,7 @@ async function mount(personal: boolean, older = false) {
     rpc: { bots_list: () => ({ personalProjectId, bots: personal ? [] : [bot], sections: [], hosts: [], projects: [{ id: "project", name: "Test project" }], warnings: [], threadBindings: personal ? [] : rows.filter((row) => !row.parentThreadId).map((row) => ({ threadId: row.id, botId: bot.id })) }) },
   });
   await slot.findByText(personal ? "Chats" : "Test bot");
-  if (!personal) fireEvent.click(slot.getByRole("button", { name: "Expand conversations for Test bot" }));
+  if (!personal) await expandBot(slot, "Test bot");
   return slot;
 }
 
@@ -39,10 +40,13 @@ it.each([false, true])("children default closed and form nested, independently c
   const slot = await mount(personal);
   expect(slot.queryByText("Conversation child")).toBeNull();
   const toggle = slot.getByRole("button", { name: "Expand children of Conversation root" });
-  expect(toggle.textContent?.trim()).toBe("1");
-  expect(toggle.parentElement?.lastElementChild).toBe(toggle);
-  expect(toggle.previousElementSibling?.getAttribute("data-archive-thread-id")).toBe("root");
-  expect(toggle.previousElementSibling?.previousElementSibling?.getAttribute("data-sidebar-thread-id")).toBe("root");
+  // A leading chevron (count in its tooltip); leaf rows keep an empty aligned slot.
+  expect(toggle.textContent?.trim()).toBe("");
+  expect(toggle.getAttribute("title")).toBe("1 child");
+  expect(toggle.parentElement?.firstElementChild).toBe(toggle);
+  expect(toggle.nextElementSibling?.getAttribute("data-sidebar-thread-id")).toBe("root");
+  const leaf = slot.container.querySelector('[data-sidebar-thread-id="leaf"]') ?? slot.container.querySelector("[data-sidebar-thread-id]:not([data-sidebar-thread-id=root])");
+  expect(leaf?.previousElementSibling?.classList.contains("conversation-disclosure-slot")).toBe(true);
   expect(slot.container.querySelector(".conversation-disclosure-spacer")).toBeNull();
   fireEvent.click(toggle);
   const child = slot.getByText("Conversation child");

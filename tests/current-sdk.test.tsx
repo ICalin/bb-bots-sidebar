@@ -1,3 +1,4 @@
+import { expandBot } from "./select-helper";
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, within } from "@testing-library/react";
@@ -26,7 +27,7 @@ async function mount(options: RenderSlotOptions = {}) {
     rpc: { bots_list: () => ({ personalProjectId, bots: [bot], hosts: [], sections: [], projects: [], warnings: [],
       threadBindings: rows.map(row => ({ threadId: row.id, botId: bot.id })) }) },
   });
-  fireEvent.click(await slot.findByRole("button", { name: "Expand conversations for Test bot" }));
+  await expandBot(slot, "Test bot");
   return slot;
 }
 

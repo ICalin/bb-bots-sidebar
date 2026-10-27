@@ -85,7 +85,7 @@ it("removes activity when work finishes and keeps unread completion as a dot, no
 });
 
 const app = await loadPluginApp(() => import("../app"));
-it("shows collapsed activity at the avatar without mixing bot ownership or changing child disclosure", async () => {
+it("shows activity at the avatar, unfolds working bots, and leaves child disclosure alone", async () => {
   const onNavigate = vi.fn();
   const rows = [running("main"), { ...running("child"), parentThreadId: "main" }, running("topic"), running("second-topic"), running("another-bot"), running("unassigned")];
   const slot = renderSlot(app.threadLists[0]!, { activeThreadId: null, activeProjectId: "project", isCompactViewport: false, onNavigate, searchQuery: "" }, {
@@ -96,9 +96,10 @@ it("shows collapsed activity at the avatar without mixing bot ownership or chang
   const row = slot.getByText(bot.name).closest<HTMLElement>(".project-row")!;
   expect(within(row).getByRole("img", { name: "First conversation: Working; 3 other conversations working" }).closest(".bot-icon-shell")).not.toBeNull();
   expect(slot.queryByText("Conversation child")).toBeNull();
-  const disclosure = within(row).getByRole("button", { name: "Expand conversations for Test bot" });
+  // Working conversations unfold their bot; children keep their own disclosure.
+  const disclosure = within(row).getByRole("button", { name: "Collapse conversations for Test bot" });
+  expect(disclosure.getAttribute("aria-expanded")).toBe("true");
   expect(disclosure.textContent).toBe("3");
-  fireEvent.click(disclosure);
   expect(slot.queryByText("Conversation child")).toBeNull();
   fireEvent.click(slot.getByRole("button", { name: "Expand children of Conversation main" }));
   expect(slot.getByText("Conversation child")).toBeTruthy();

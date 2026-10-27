@@ -78,7 +78,7 @@ it("double-clicking the bot toggles the list once, without duplicate navigation"
   ]);
   fireEvent.doubleClick(toggle());
   expect(toggle().getAttribute("aria-expanded")).toBe("false");
-  expect(slot.inspection.rpcCalls.every(call => call.method === "bots_list")).toBe(true);
+  expect(slot.inspection.rpcCalls.every(call => ["bots_list", "workflow_runs"].includes(call.method))).toBe(true);
 });
 
 it.each(["before", "after", "nest", "escape", "outside", "touch", "blur", "unmount", "failure"])("pointer drag supports %s without stealing split gestures or clicks", async mode => {
@@ -101,20 +101,22 @@ it.each(["before", "after", "nest", "escape", "outside", "touch", "blur", "unmou
     await waitFor(() => expect(slot.inspection.rpcCalls).toContainEqual({ method: "conversation_reorder", input: { botId: bot.id, threadId: "last", targetThreadId: "first", position: mode === "after" ? "after" : "before" } }));
   } else if (mode === "nest") {
     await waitFor(() => expect(slot.inspection.rpcCalls).toContainEqual({ method: "conversation_nest", input: { threadId: "last", parentThreadId: "first" } }));
-  } else expect(slot.inspection.rpcCalls.every(call => call.method === "bots_list")).toBe(true);
+  } else expect(slot.inspection.rpcCalls.every(call => ["bots_list", "workflow_runs"].includes(call.method))).toBe(true);
   if (mode === "failure") { expect(await slot.findByRole("alert")).toHaveProperty("textContent", "Reorder failed"); expect(slot.container.querySelector('[data-sidebar-thread-id]')?.getAttribute("data-sidebar-thread-id")).toBe("first"); }
   expect(split.onPointerDown).toHaveBeenCalledOnce(); expect(slot.inspection.navigateCalls).toEqual([]);
   expect(document.querySelector(".conversation-drag-ghost")).toBeNull();
 });
 
-it("keeps the bot collapsed through navigation and reveals ancestor branches only after expansion", async () => {
+it("unfolds the bot and the ancestor path when one of its conversations is viewed", async () => {
   const { slot, toggle } = await mount();
+  expect(toggle().getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(slot.getByText("Go grandchild"));
-  expect(toggle().getAttribute("aria-expanded")).toBe("false"); expect(slot.queryByText("Conversation grandchild")).toBeNull();
-  fireEvent.click(toggle()); expect(await slot.findByText("Conversation grandchild")).toBeTruthy();
+  expect(toggle().getAttribute("aria-expanded")).toBe("true"); expect(await slot.findByText("Conversation grandchild")).toBeTruthy();
   expect(slot.container.querySelector('[data-sidebar-thread-id="grandchild"]')?.getAttribute("aria-current")).toBe("page");
-  fireEvent.click(slot.getByText("Go elsewhere")); expect(toggle().getAttribute("aria-expanded")).toBe("true");
-  fireEvent.click(toggle()); fireEvent.click(slot.getByText("Go grandchild")); expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  // Folding while viewing sticks until the user navigates to another of its conversations.
+  fireEvent.click(toggle()); expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(slot.getByText("Go elsewhere")); expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(slot.getByText("Go grandchild")); expect(toggle().getAttribute("aria-expanded")).toBe("true");
 });
 
 it("treats the old main as an ordinary root with independently collapsed children", async () => {
@@ -167,5 +169,5 @@ it("archives the first row and opens the next without replacing a main", async (
   fireEvent.click(slot.getByRole("button", { name: "Archive Conversation first" })); fireEvent.click(open());
   expect(slot.nativeActionCalls).toEqual([{ key: "bb--core/archive", threadId: "first" }]);
   expect(slot.inspection.navigateCalls).toEqual([{ method: "toThread", threadId: "first", options: undefined }]);
-  expect(slot.inspection.rpcCalls.every(call => call.method === "bots_list")).toBe(true);
+  expect(slot.inspection.rpcCalls.every(call => ["bots_list", "workflow_runs"].includes(call.method))).toBe(true);
 });

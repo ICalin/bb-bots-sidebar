@@ -5,7 +5,8 @@ import { mergeSectionContext, sectionContextPatchSchema } from "./section-contex
 import { notionRefreshConfigSchema, progressInputSchema } from "./notion-progress";
 import type { BotStore } from "./bot-store";
 import { listBotConversations } from "./bot-conversations";
-import { conversationRoots, orderConversations } from "./conversation-order";
+import type { CompletionRecord } from "./completion";
+import { mainConversationId, toCompletionThread } from "./completion-server";
 
 const USAGE = `bb bots list [--json] [--limit 1-100] [--offset N]
 bb bots message <bot-id-or-exact-name> <message> [--thread <conversation-id>] [--json]
@@ -94,7 +95,8 @@ export function frameBotMessage(sender: Sender, message: string): string {
   ].join("\n");
 }
 
-export function registerBotsCli(bb: BbPluginApi, store: BotStore, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>, publish: () => unknown = () => {}) {
+// The default recipient is the sidebar's first conversation that is not completed.
+export function registerBotsCli(bb: BbPluginApi, store: BotStore, resolveOwner: (threadId: string, persist?: boolean) => Promise<string | null>, completionRecords: () => ReadonlyMap<string, CompletionRecord> = () => new Map(), publish: () => unknown = () => {}) {
   bb.cli.register({
     name: "bots", summary: "List bots and send attributed asynchronous messages to their conversations",
     commands: [
@@ -194,7 +196,7 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, resolveOwner: 
         const message = raw.trim();
         if (!message || message.length > MESSAGE_MAX_CHARS) throw new Error(`Message must contain 1-${MESSAGE_MAX_CHARS} characters`);
         const bot = recipient(store.list(), selector);
-        const threadId = options.threadId ?? (await listBotConversations(bb, bot, resolveOwner)).roots[0]?.id;
+        const threadId = options.threadId ?? mainConversationId((await listBotConversations(bb, bot, resolveOwner)).rows.map(toCompletionThread), bot.threadOrder, completionRecords()) ?? undefined;
         if (!threadId) throw new Error("This bot has no visible conversation. Open one in the sidebar first, or choose a bound conversation with --thread.");
         if (ctx.threadId === threadId) throw new Error("Cannot message the current conversation. Choose another bot or conversation.");
         ctx.signal?.throwIfAborted();
@@ -250,7 +252,8 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, resolveOwner: 
         : runtime === "error" || thread.queuedWork === "failed" ? "error" : "idle";
       if (rank[status] > rank[result.get(owner) ?? "idle"]) result.set(owner, status);
     }
-    const firstThreads = new Map(store.list().map(bot => [bot.id, conversationRoots(orderConversations(botRows.get(bot.id) ?? [], bot.threadOrder))[0]?.id]));
+    const records = completionRecords();
+    const firstThreads = new Map(store.list().map(bot => [bot.id, mainConversationId((botRows.get(bot.id) ?? []).map(toCompletionThread), bot.threadOrder, records) ?? undefined]));
     return { activity: result, firstThreads };
   }
   async function resolveSender(ctx: PluginCliContext): Promise<Sender> {

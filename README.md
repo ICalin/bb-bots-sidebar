@@ -187,12 +187,32 @@ in bot state.
   added conversation into view. Hold Shift anywhere on the row to
   put it first instead (also unfolding the list). Drop an
   existing top-level conversation on its own bot row to move it to the top.
-- Hover a conversation row to reveal its archive button, also available on
-  keyboard focus and touch. It sits inline before the child count, never covering
-  the title or disclosure. This uses BB's normal archive action, including children.
-- Each conversation's right-edge count/chevron reveals only its own children,
-  collapsed by default. Once a bot is explicitly expanded, navigation reveals
-  the viewed ancestor path. Navigation never expands a collapsed bot.
+- Hover a bot conversation row to reveal its **complete** checkbox at the right
+  edge; it takes no space otherwise, so titles use the full width. Hover the
+  checkbox to reveal **archive** just below it. On touch, both are in the
+  long-press menu. Archive uses BB's normal
+  archive action, including children. Chats rows show archive on hover.
+- Completing a conversation (and its children) removes it from the bot's list,
+  with Undo in the toast. **N completed** below the list shows them again. New
+  activity, a question, or queued input reopens it automatically.
+- In Settings → Plugins → Bots Sidebar: **Auto-complete** idle bot conversations
+  (on, 3 days) and **Auto-archive** completed ones (off, 7 days; 0 archives
+  immediately). Neither touches a bot's first conversation, pinned conversations,
+  or anything working. A parent waits until its whole subtree is idle.
+- Each conversation's leading chevron reveals only its own children, collapsed by
+  default (the tooltip gives the count).
+- Every thread's header and Info tab show which bot it belongs to. Pick another bot to
+  move it (with its child conversations), or **No bot** to take it out of the bot. This
+  works whichever sidebar you use. Below it, **Bot prompt** shows exactly what the bot
+  adds to the system prompt, folded until you open it.
+- A handoff of a bot conversation (BB's **Continue in new thread** or `bb handoff`)
+  stays with that bot and takes the continued conversation's place, so handing off
+  the main conversation makes the new thread the main one.
+- A running BB workflow shows as a virtual child of the conversation that started
+  it, e.g. **category-investigation · 3 running**. Click it to list its live agent
+  threads and open one. A new run unfolds its conversation once. Opening one of a bot's conversations, or the bot starting
+  work, unfolds the bot and reveals the viewed ancestor path. Fold it again and it
+  stays folded until the next of those events.
   Chats retains its separate overflow.
 - The avatar's bottom-right spinner shows its **first conversation** working. Small pulsing dots
   to the left show other working conversations—even when collapsed. Three slots

@@ -1,3 +1,4 @@
+import { expandBot } from "./select-helper";
 // @vitest-environment jsdom
 import { afterEach, expect, it } from "vitest";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
@@ -23,7 +24,7 @@ it("keeps the role and owned projects in the bot subtitle through folding and ow
   expect(subtitle.getAttribute("title")).toBe("Project assistant · Owned projects: Atlas, Beacon");
   expect(row.textContent).not.toContain("Thread title must not replace role");
   expect(row.textContent).not.toContain("Member only");
-  fireEvent.click(slot.getByRole("button", { name: "Expand conversations for Test bot" }));
+  await expandBot(slot, "Test bot");
   expect(subtitle.textContent).toBe("Project assistant · Atlas, Beacon");
   fireEvent.click(slot.getByRole("button", { name: "Collapse conversations for Test bot" }));
   expect(subtitle.textContent).toBe("Project assistant · Atlas, Beacon");

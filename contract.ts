@@ -34,6 +34,25 @@ export const metadataSchema = z.object({
 export type BotMetadata = z.infer<typeof metadataSchema>;
 export const sectionSchema = z.object({ id, name: z.string().min(1).max(80), order: z.number().int().nonnegative() }).strict();
 export type BotSection = z.infer<typeof sectionSchema>;
+/** Which bot a thread belongs to, for the thread Info row and header picker. */
+export const threadBotSchema = z.object({
+  botId: id.nullable(),
+  /** False when the bot comes from the parent or fork source rather than a binding. */
+  explicit: z.boolean(),
+  /** The user chose "No bot", so the thread no longer inherits one. */
+  detached: z.boolean(),
+  bots: z.array(z.object({ id, name: z.string(), role: z.string(), avatar: avatarSchema, hidden: z.boolean() }).strict()),
+}).strict();
+export type ThreadBot = z.infer<typeof threadBotSchema>;
+/** What the thread's bot adds to the agent's system prompt, exactly as configured. */
+export const threadBotPromptSchema = z.object({
+  botId: id.nullable(),
+  tools: z.array(z.string()),
+  skills: z.array(z.string()),
+  /** Dynamic per-conversation instructions, then the static guidance BB appends with the bot's tools. */
+  sections: z.array(z.object({ id: z.enum(["bot", "tools"]), title: z.string(), text: z.string() }).strict()),
+}).strict();
+export type ThreadBotPrompt = z.infer<typeof threadBotPromptSchema>;
 const hostSchema = z.object({ id, name: z.string(), connected: z.boolean() }).strict();
 const projectSchema = z.object({ id, name: z.string() }).strict();
 const hostPathSchema = z.string().trim().min(1).max(4096).refine((value) => !value.includes("\0"), "Path must not contain NUL");
@@ -88,8 +107,18 @@ export const stateMutationToolSchema = z.object({
 });
 export const stateMutationResultSchema = z.object({ botId: id, target: stateTargetSchema, changed: z.boolean(), revision: z.number(), state: z.json() }).strict();
 
+const workflowStatusSchema = z.enum(["working", "waiting", "error", "idle"]);
+export const workflowRunSchema = z.object({
+  key: z.string().min(1), ownerThreadId: id, name: z.string(), runId: z.string().nullable(), status: workflowStatusSchema, startedAt: z.number(),
+  agents: z.array(z.object({ threadId: id, title: z.string(), status: workflowStatusSchema, createdAt: z.number() }).strict()),
+}).strict();
+
 export const rpcContract = defineRpcContract({
-  bots_list: { input: z.null(), output: z.object({ bots: z.array(metadataSchema), hosts: z.array(hostSchema), sections: z.array(sectionSchema), projects: z.array(projectSchema), threadBindings: z.array(z.object({ threadId: id, botId: id }).strict()), warnings: z.array(z.string()), personalProjectId: id, projectOwners: z.array(projectOwnerSchema).optional() }).strict() },
+  thread_bot: { input: z.object({ threadId: id }).strict(), output: threadBotSchema },
+  thread_bot_prompt: { input: z.object({ threadId: id }).strict(), output: threadBotPromptSchema },
+  conversation_set_bot: { input: z.object({ threadId: id, botId: id.nullable() }).strict(), output: z.object({ ok: z.literal(true), threadIds: z.array(id) }).strict() },
+  workflow_runs: { input: z.null(), output: z.object({ runs: z.array(workflowRunSchema) }).strict() },
+  bots_list: { input: z.null(), output: z.object({ bots: z.array(metadataSchema), hosts: z.array(hostSchema), sections: z.array(sectionSchema), projects: z.array(projectSchema), threadBindings: z.array(z.object({ threadId: id, botId: id }).strict()), warnings: z.array(z.string()), personalProjectId: id, projectOwners: z.array(projectOwnerSchema).optional(), completions: z.array(z.object({ threadId: id, completedAt: z.number() }).strict()).optional(), detachedThreadIds: z.array(id).optional() }).strict() },
   project_browse: { input: projectBrowseInputSchema, output: projectBrowseOutputSchema },
   project_create: { input: projectCreateInputSchema, output: projectSchema },
   bot_create: { input: z.object({ ...editFields, hostId: id, launchPreset: launchPresetSchema.nullable().optional() }).strict(), output: metadataSchema },
@@ -109,6 +138,7 @@ export const rpcContract = defineRpcContract({
   main_set: { input: z.object({ botId: id, threadId: id }).strict(), output: metadataSchema },
   conversation_create: { input: z.object({ botId: id, request: newThreadRequestSchema, makeMain: z.boolean().optional() }).strict(), output: z.object({ threadId: id }).strict() },
   conversation_fork: { input: z.object({ botId: id, sourceThreadId: id, request: newThreadRequestSchema }).strict(), output: z.object({ threadId: id }).strict() },
+  conversation_complete: { input: z.object({ threadId: id, completed: z.boolean() }).strict(), output: z.object({ ok: z.literal(true), threadIds: z.array(id) }).strict() },
   conversation_nest: { input: z.object({ threadId: id, parentThreadId: id }).strict(), output: z.object({ ok: z.literal(true) }).strict() },
   conversation_reorder: { input: z.object({ botId: id, threadId: id, targetThreadId: id, position: z.enum(["before", "after"]) }).strict(), output: z.object({ ok: z.literal(true) }).strict() },
   conversation_assign: { input: z.object({ botId: id, threadId: id, placeFirst: z.boolean().optional() }).strict(), output: z.object({ ok: z.literal(true) }).strict() },

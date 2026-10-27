@@ -11,11 +11,14 @@ import { createLegacyImporter } from "./lib/migrate-bots";
 import { browseProjectDirectory, createWorkProject } from "./lib/project-creation";
 import { mergeSectionContext } from "./lib/section-context";
 import { registerBotsCli } from "./lib/bots-cli";
+import { createWorkflowRuns } from "./lib/workflow-runs-server";
+import { handoffSourceFromText, handoffSourceThreadId } from "./lib/handoff-source";
 import { registerBotMentions } from "./lib/bot-mentions";
 import { listBotConversations } from "./lib/bot-conversations";
 import { botProjectContext } from "./lib/project-context";
 import { BOT_GUIDANCE, botInstructions } from "./lib/bot-instructions";
 import { MEMORY_MAX_CHARS, validateMemory } from "./lib/memory-limit";
+import { createCompletion } from "./lib/completion-server";
 export { rpcContract, avatarSchema } from "./contract";
 export type { BotAvatar, BotMetadata, BotSection, ProjectCreateInput } from "./contract";
 
@@ -29,6 +32,9 @@ export default async function plugin(bb: BbPluginApi) {
   const publish = () => bb.realtime.publish(CHANGED, { updatedAt: Date.now() });
   const state = createPrivateBotState(bb, store, publish);
   const importLegacy = createLegacyImporter(bb, store);
+  // Late-bound: workflow events reopen completions; completion asks for live runs.
+  const workflowRuns = createWorkflowRuns(bb, (ownerThreadId) => completion.reopenForActivity(ownerThreadId));
+  const completion = createCompletion(bb, store, publish, workflowRuns.busyOwners);
   let personalId: string | null = null;
   const locks = new Map<string, Promise<unknown>>();
   function serial<T>(key: string, operation: () => Promise<T>): Promise<T> {
@@ -49,6 +55,7 @@ export default async function plugin(bb: BbPluginApi) {
   function owner(context: { id: string; parentThreadId?: string | null; sourceThreadId?: string | null }) {
     const explicit = store.owner(context.id);
     if (explicit) return explicit;
+    if (store.detached(context.id)) return null;
     const inherited = (context.parentThreadId && store.owner(context.parentThreadId)) || (context.sourceThreadId && store.owner(context.sourceThreadId));
     return inherited || null;
   }
@@ -59,6 +66,7 @@ export default async function plugin(bb: BbPluginApi) {
     while (current && !chain.includes(current)) {
       const explicit = store.owner(current);
       if (explicit) { botId = explicit; break; }
+      if (store.detached(current)) break;
       const thread = await bb.sdk.threads.get({ threadId: current });
       chain.push(current);
       botId = (thread.parentThreadId && store.owner(thread.parentThreadId)) || (thread.sourceThreadId && store.owner(thread.sourceThreadId)) || null;
@@ -126,7 +134,23 @@ export default async function plugin(bb: BbPluginApi) {
     }));
   }
   type RoutingThread = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;
-  async function routeNewThread(thread: RoutingThread, atCreation: boolean) {
+  async function projectToJoinFor(thread: RoutingThread, atCreation: boolean) {
+    if (!atCreation && thread.status !== "pending") return null;
+    const projects = await bb.sdk.projects.list();
+    const legacyHome = store.list().some((bot) => bot.legacyHomeProjectId === thread.projectId);
+    return !legacyHome && projects.some((project) => project.id === thread.projectId && project.kind === "standard") ? thread.projectId : null;
+  }
+  /** The top-level conversation a handoff continues, so the handoff can take its slot. */
+  async function conversationRoot(threadId: string) {
+    let current = threadId;
+    for (let depth = 0; depth < 32; depth++) {
+      const parent = (await bb.sdk.threads.get({ threadId: current }).catch(() => null))?.parentThreadId;
+      if (!parent) return current;
+      current = parent;
+    }
+    return current;
+  }
+  async function routeNewThread(thread: RoutingThread, atCreation: boolean, handoffFrom: string | null = null) {
     const existing = store.owner(thread.id);
     if (existing) return existing;
     // Our creation request carries a durable explicit choice. A fire-and-forget
@@ -134,16 +158,22 @@ export default async function plugin(bb: BbPluginApi) {
     if (atCreation && thread.originPluginId === bb.pluginId) return null;
     const inherited = thread.parentThreadId || thread.sourceThreadId ? await resolveOwner(thread.id, false) : null;
     if (inherited) {
-      let projectToJoin: string | null = null;
-      if (atCreation || thread.status === "pending") {
-        const projects = await bb.sdk.projects.list();
-        const legacyHome = store.list().some((bot) => bot.legacyHomeProjectId === thread.projectId);
-        if (!legacyHome && projects.some((project) => project.id === thread.projectId && project.kind === "standard")) projectToJoin = thread.projectId;
-      }
-      const adopted = store.adoptInherited(thread.id, inherited, projectToJoin);
+      const adopted = store.adoptInherited(thread.id, inherited, await projectToJoinFor(thread, atCreation));
       if (adopted.joined) await state.mirror(store.require(adopted.botId));
       if (adopted.changed) publish();
       return adopted.botId;
+    }
+    // A handoff of a bot conversation continues as that bot, taking the continued
+    // conversation's place in the order (so a handoff of the main becomes main).
+    // Only brand-new top-level threads qualify; a later mention never reassigns.
+    if (handoffFrom && handoffFrom !== thread.id && !thread.parentThreadId && (atCreation || thread.status === "pending")) {
+      const source = await resolveOwner(handoffFrom, false).catch(() => null);
+      if (source) {
+        const adopted = store.adoptInherited(thread.id, source, await projectToJoinFor(thread, atCreation), false, undefined, await conversationRoot(handoffFrom));
+        if (adopted.joined) await state.mirror(store.require(adopted.botId));
+        if (adopted.changed) publish();
+        return adopted.botId;
+      }
     }
     if (thread.originPluginId === bb.pluginId || (!atCreation && thread.status !== "pending")) return null;
     const assigned = store.bindProjectDefault(thread.id, thread.projectId, thread.createdAt);
@@ -217,10 +247,13 @@ export default async function plugin(bb: BbPluginApi) {
     });
   }
   const contextOwner = (ctx: PluginAgentConfigurationContext) => owner(ctx.thread);
+  // One source for the agent configuration and the Info tab's prompt preview.
+  const botAgentConfiguration = (bot: BotMetadata, project: PluginAgentConfigurationContext["project"]) =>
+    ({ tools: ["bot_read_state", "bot_update_state"], skills: ["bots-sidebar"], instructions: botInstructions(bot, botProjectContext(bot, project, store)) });
   bb.agents.configure((ctx) => {
     const botId = contextOwner(ctx);
     const bot = botId ? store.get(botId) : null;
-    return bot ? { tools: ["bot_read_state", "bot_update_state"], skills: ["bots-sidebar"], instructions: botInstructions(bot, botProjectContext(bot, ctx.project, store)) } : { tools: [], skills: [] };
+    return bot ? botAgentConfiguration(bot, ctx.project) : { tools: [], skills: [] };
   });
   bb.agents.registerTool({
     name: "bot_read_state", description: "Read this bot's embedded identity and revision, memory facts, settings, or linked/available projects. Supply only target: identity, memory, settings, or project. State is managed privately by BB and is independent of the current machine or working directory.",
@@ -252,17 +285,18 @@ export default async function plugin(bb: BbPluginApi) {
       else if (start.projectId !== ctx.thread.projectId) throw new Error("Bot conversation start belongs to a different project");
       store.finishStart(token, ctx.thread.id); publish(); return { action: "proceed" };
     }
-    await routeNewThread(ctx.thread, false);
+    await routeNewThread(ctx.thread, false, handoffSourceThreadId(ctx.input.blocks, ctx.thread.originPluginId));
     return { action: "proceed" };
   });
-  bb.events.on("thread.created", async ({ thread }) => { await routeNewThread(thread, true); });
+  bb.events.on("thread.created", async ({ thread }) => { await routeNewThread(thread, true, handoffSourceFromText(thread.titleFallback)); });
 
-  registerBotsCli(bb, store, resolveOwner, publish);
+  registerBotsCli(bb, store, resolveOwner, completion.records, publish);
   registerBotMentions(bb, store);
 
   bb.rpc.register(rpcContract, {
     project_browse: ({ hostId, path }) => browseProjectDirectory(bb, { hostId, path }),
     project_create: (input) => serial("project-create", () => serial(`project-create:${input.requestId}`, () => createWorkProject(bb, store, input))),
+    workflow_runs: async () => ({ runs: await workflowRuns.list() }),
     bots_list: async () => {
       const warnings = await importLegacy();
       await Promise.all(store.list().map((bot) => serial(bot.id, () => state.prepare(bot.id))));
@@ -272,7 +306,7 @@ export default async function plugin(bb: BbPluginApi) {
       personalId = personal.id;
       const bots = store.list();
       const legacyHomes = new Set(bots.map((bot) => bot.legacyHomeProjectId));
-      return { bots, projectOwners: store.projectOwners().map(({ projectId, botId }) => ({ projectId, botId })), warnings: [...warnings, ...state.warnings()], personalProjectId: personalId, threadBindings: store.bindings(), sections: store.sections(), hosts: hosts.map((host) => ({ id: host.id, name: host.name, connected: host.status === "connected" })), projects: projects.filter((project) => project.kind === "standard" && !legacyHomes.has(project.id)).map((project) => ({ id: project.id, name: project.name })) };
+      return { bots, projectOwners: store.projectOwners().map(({ projectId, botId }) => ({ projectId, botId })), warnings: [...warnings, ...state.warnings()], personalProjectId: personalId, threadBindings: store.bindings(), detachedThreadIds: store.detachedIds(), completions: completion.completions(), sections: store.sections(), hosts: hosts.map((host) => ({ id: host.id, name: host.name, connected: host.status === "connected" })), projects: projects.filter((project) => project.kind === "standard" && !legacyHomes.has(project.id)).map((project) => ({ id: project.id, name: project.name })) };
     },
     bot_create: ({ name, role, hostId, avatar, sectionId, linkedProjectIds, ownedProjectIds, soul, memory, settings, launchPreset }) => serial("registry", async () => {
       await importLegacy(); await validateLinks(linkedProjectIds); if (ownedProjectIds) await validateLinks(ownedProjectIds); validateSection(sectionId);
@@ -373,6 +407,10 @@ export default async function plugin(bb: BbPluginApi) {
       }
       return { ok: true } as const;
     }),
+    conversation_complete: async ({ threadId, completed }) => {
+      if (!await resolveOwner(threadId, false)) throw new Error("Only bot conversations can be completed.");
+      return completion.setCompleted(threadId, completed);
+    },
     conversation_nest: ({ threadId, parentThreadId }) => serial("registry", async () => {
       if (threadId === parentThreadId) throw new Error("A conversation cannot be nested under itself.");
       const thread = await bb.sdk.threads.get({ threadId });
@@ -389,6 +427,56 @@ export default async function plugin(bb: BbPluginApi) {
       await bb.sdk.threads.update({ threadId, parentThreadId });
       publish();
       return { ok: true } as const;
+    }),
+    thread_bot: async ({ threadId }) => {
+      const botId = await resolveOwner(threadId, false);
+      return {
+        botId, explicit: Boolean(botId) && store.owner(threadId) === botId, detached: store.detached(threadId),
+        bots: store.list().map((bot) => ({ id: bot.id, name: bot.name, role: bot.role, avatar: bot.avatar, hidden: bot.hiddenUntilActivity })),
+      };
+    },
+    thread_bot_prompt: async ({ threadId }) => {
+      const botId = await resolveOwner(threadId, false);
+      const bot = botId ? store.get(botId) : undefined;
+      if (!bot) return { botId: null, tools: [], skills: [], sections: [] };
+      const thread = await bb.sdk.threads.get({ threadId });
+      const project = (await bb.sdk.projects.list({ includePersonal: true })).find((entry) => entry.id === thread.projectId);
+      if (!project) throw new Error("This conversation's project is unavailable.");
+      const config = botAgentConfiguration(bot, project);
+      return { botId: bot.id, tools: config.tools, skills: config.skills, sections: [
+        { id: "bot" as const, title: "Bot context", text: config.instructions },
+        { id: "tools" as const, title: "Tool guidance", text: BOT_GUIDANCE },
+      ] };
+    },
+    // The user's explicit choice in the thread header or Info tab. Unlike drag/dialog
+    // assignment it may move a conversation between bots or detach it ("No bot"); the
+    // conversation's descendants in the old bot move with it.
+    conversation_set_bot: ({ threadId, botId }) => serial("registry", async () => {
+      const thread = await bb.sdk.threads.get({ threadId });
+      if (thread.archivedAt || thread.deletedAt) throw new Error("Restore this conversation before changing its bot.");
+      const from = await resolveOwner(threadId, false);
+      if (from === botId) return { ok: true as const, threadIds: [] };
+      const run = async () => {
+        const target = botId ? store.require(botId) : null;
+        let projectToJoin: string | null = null;
+        if (target && thread.projectId !== await personalProjectId() && thread.projectId !== target.legacyHomeProjectId && !target.linkedProjectIds.includes(thread.projectId)) {
+          await validateLinks([thread.projectId]); projectToJoin = thread.projectId;
+        }
+        const descendants: string[] = [];
+        if (from) {
+          const rows = (await listBotConversations(bb, store.require(from), resolveOwner)).rows;
+          const inSubtree = new Set([threadId]);
+          for (let grew = true; grew;) {
+            grew = false;
+            for (const row of rows) if (row.parentThreadId && inSubtree.has(row.parentThreadId) && !inSubtree.has(row.id)) { inSubtree.add(row.id); descendants.push(row.id); grew = true; }
+          }
+        }
+        const result = store.reassign(threadId, descendants, botId, projectToJoin);
+        if (result.joined && target) await state.mirror(store.require(target.id));
+        publish();
+        return { ok: true as const, threadIds: [threadId, ...descendants] };
+      };
+      return from ? serial(from, () => (botId ? serial(botId, run) : run())) : botId ? serial(botId, run) : run();
     }),
     conversation_assign: ({ botId, threadId, placeFirst }) => serial("registry", () => serial(botId, async () => {
       const bot = store.require(botId); const thread = await bb.sdk.threads.get({ threadId });

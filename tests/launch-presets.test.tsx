@@ -1,3 +1,4 @@
+import { expandBot } from "./select-helper";
 // @vitest-environment jsdom
 import { createElement } from "react";
 import type { NewThreadComposerProps } from "@get-bb/plugin-sdk/app";
@@ -127,7 +128,7 @@ it("starts project conversations in a worktree when the bot prefers worktrees", 
 
 it("does not apply a new-conversation preset to forks", async () => {
   const { slot } = await mount(preset, true);
-  fireEvent.click(slot.getByRole("button", { name: `Expand conversations for ${bot.name}` }));
+  await expandBot(slot, bot.name);
   fireEvent.contextMenu(slot.getByText("Conversation main"));
   fireEvent.click(await slot.findByRole("menuitem", { name: "Fork in same environment…" }));
   await slot.findByRole("dialog", { name: "Fork conversation" });

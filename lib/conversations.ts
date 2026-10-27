@@ -1,5 +1,6 @@
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { orderConversations } from "./conversation-order";
+import { hiddenCompletedIds, isCompleted, type CompletionThread } from "./completion";
 
 const WORKING_INDICATORS = new Set(["runtime", "workflow", "background-agent", "background-command", "plan-mode", "goal", "working-draft"]);
 
@@ -12,6 +13,8 @@ export function isWorking(thread: PluginSidebarThread): boolean {
 export function conversationOwners(
   threads: readonly PluginSidebarThread[],
   bindings: readonly { threadId: string; botId: string }[],
+  /** Threads the user set to "No bot": inheritance stops there. */
+  detached: ReadonlySet<string> = new Set(),
 ): Map<string, string> {
   const direct = new Map(bindings.map(({ threadId, botId }) => [threadId, botId]));
   const byId = new Map(threads.map((thread) => [thread.id, thread]));
@@ -23,6 +26,7 @@ export function conversationOwners(
       visited.add(id);
       const owner = direct.get(id);
       if (owner) { owners.set(thread.id, owner); break; }
+      if (detached.has(id)) break;
       id = byId.get(id)?.parentThreadId ?? null;
     }
   }
@@ -106,4 +110,36 @@ export function orderedBotConversationTree(threads: readonly PluginSidebarThread
     activePath: tree.activePath,
     childrenByParent: new Map([...tree.childrenByParent].map(([id, children]) => [id, orderConversations(children, order)])),
   };
+}
+
+/** Live work, a raised hand, or queued input: never completed, and it unfolds its bot. */
+export function isBusy(thread: PluginSidebarThread): boolean {
+  return isWorking(thread) || thread.hasPendingInteraction || thread.indicator === "waiting-for-input" || thread.queuedWork !== "none";
+}
+
+export function sidebarCompletionThread(thread: PluginSidebarThread): CompletionThread {
+  return {
+    id: thread.id, parentThreadId: thread.parentThreadId, createdAt: thread.createdAt, updatedAt: thread.updatedAt,
+    latestAttentionAt: thread.latestAttentionAt, pinned: thread.isPinned, busy: isBusy(thread),
+  };
+}
+
+/**
+ * Split a bot's conversations into shown and completed. The conversation being
+ * viewed always stays visible (with its ancestors) so navigation never lands
+ * on a row the sidebar cannot show.
+ */
+export function splitCompletedConversations(
+  threads: readonly PluginSidebarThread[],
+  completions: ReadonlyMap<string, number>,
+  activeThreadId: string | null,
+) {
+  const records = new Map([...completions].map(([threadId, completedAt]) => [threadId, { threadId, completedAt, reopenedAt: null }]));
+  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  const view = threads.map(sidebarCompletionThread);
+  const hidden = hiddenCompletedIds(view, records, (thread) => thread.id === activeThreadId);
+  const completed = new Set(view.filter((thread) => isCompleted(records.get(thread.id), thread)).map((thread) => thread.id));
+  // Rows the "N completed" reveal would add: top-most hidden conversations.
+  const hiddenCount = [...hidden].filter((id) => { const parent = byId.get(id)?.parentThreadId; return !parent || !hidden.has(parent); }).length;
+  return { shown: threads.filter((thread) => !hidden.has(thread.id)), hidden, completed, hiddenCount };
 }

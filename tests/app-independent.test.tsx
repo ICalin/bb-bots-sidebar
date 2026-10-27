@@ -136,7 +136,7 @@ describe("independent bot identities", () => {
     expect(composer.props?.defaultEnvironment).toEqual(personalEnvironment);
     expect(slot.inspection.navigateCalls).toEqual([]);
     // The personal project comes from bots_list, not the sidebar project cache.
-    expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual(["bots_list", "bot_prepare", "bots_list"]);
+    expect(slot.inspection.rpcCalls.map((call) => call.method).filter((method) => method !== "workflow_runs")).toEqual(["bots_list", "bot_prepare", "bots_list"]);
     await act(() => composer.props!.onSubmit(personalRequest));
     expect(slot.inspection.rpcCalls).toContainEqual({ method: "conversation_create", input: { botId: "solo", makeMain: false, request: personalRequest } });
     expect(slot.inspection.rpcCalls.some((call) => call.method === "main_set")).toBe(false);
@@ -294,7 +294,7 @@ describe("independent bot identities", () => {
     expect(slot.inspection.rpcCalls).toContainEqual({ method: "bot_prepare", input: { botId: "created" } });
     expect(composer.props?.defaultProjectId).toBe(personalProjectId);
     expect(composer.props?.defaultEnvironment).toEqual({ type: "host", hostId: "remote", workspace: { type: "personal" } });
-    expect(slot.inspection.rpcCalls.every((call) => ["bots_list", "bot_create", "bot_prepare"].includes(call.method))).toBe(true);
+    expect(slot.inspection.rpcCalls.every((call) => ["bots_list", "bot_create", "bot_prepare", "workflow_runs"].includes(call.method))).toBe(true);
     expect(slot.inspection.navigateCalls).toEqual([]);
   });
 

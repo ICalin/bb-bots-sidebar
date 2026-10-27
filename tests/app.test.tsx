@@ -1,3 +1,4 @@
+import { expandBot } from "./select-helper";
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
@@ -21,7 +22,7 @@ async function mount(withChat = false, status: Partial<ReturnType<typeof thread>
     rpc: { bots_list: () => ({ personalProjectId, bots: [bot, ...(withHidden ? [{ ...bot, id: "hidden", name: "Hidden bot", mainThreadId: null, hiddenUntilActivity: true, hiddenAt: 10000 }] : [])], hosts: [{ id: "host", name: "Local", connected: true }], sections: [], projects: [{ id: "project", name: "Project" }], threadBindings: ["main", ...Array.from({ length: 10 }, (_, i) => String(i))].map((threadId) => ({ threadId, botId: bot.id })), warnings: [] }), conversation_reorder: () => ({ ok: true }) },
   });
   await slot.findByText("Test bot");
-  fireEvent.click(slot.getByRole("button", { name: "Expand conversations for Test bot" }));
+  await expandBot(slot, "Test bot");
   return { slot, onNavigate };
 }
 
@@ -52,11 +53,12 @@ describe("Bots sidebar", () => {
     fireEvent.click(toggle);
     expect(slot.getByText("Hidden bot")).toBeTruthy();
   });
-  it("shows the ordered roots with only the requested inline archive action", async () => {
+  it("shows the ordered roots with only the inline complete and archive actions", async () => {
     const { slot } = await mount();
     expect(slot.container.querySelectorAll("[data-sidebar-thread-id]")).toHaveLength(11);
-    expect(slot.container.querySelectorAll(".thread-row button:not(.conversation-archive), .project-row-actions")).toHaveLength(0);
+    expect(slot.container.querySelectorAll(".thread-row button:not(.conversation-archive):not(.conversation-complete), .project-row-actions")).toHaveLength(0);
     expect(slot.container.querySelectorAll(".thread-row .conversation-archive")).toHaveLength(11);
+    expect(slot.container.querySelectorAll(".thread-row .conversation-complete")).toHaveLength(11);
     expect(slot.queryByRole("button", { name: /Other/ })).toBeNull();
     expect(slot.container.querySelectorAll("[data-sidebar-thread-id]")).toHaveLength(11);
     expect(slot.inspection.navigateCalls).toEqual([]);
