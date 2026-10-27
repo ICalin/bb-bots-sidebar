@@ -45,6 +45,9 @@ import { PrBadge } from "@/components/pr-badge";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SectionDialog } from "@/components/section-dialog";
 import type { SectionProgress } from "./lib/notion-progress";
+import { SectionContextDialog } from "@/components/section-context-dialog";
+import { useSectionContexts } from "./lib/use-section-contexts";
+import { withSectionContext } from "./lib/section-context";
 import { useSectionNotion, useSetSectionNotionLink } from "./lib/section-notion-links";
 import { BotNewConversationButton } from "@/components/bot-new-conversation-button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -525,7 +528,7 @@ function BotGroup({
       </div>
       </RowContextMenu>
       <div id={conversationsId} role="group" aria-label={`Conversations for ${metadata.name}`} className="bot-topics" hidden={!topicsVisible}>
-        {topicsVisible ? <SectionedThreads roots={sortByActivity ? byLatestActivity(roots) : roots} sections={threadSections} renderThread={renderThread} dropSectionId={reorderDrag.target?.position === "section" ? reorderDrag.target.sectionId ?? "" : undefined} /> : null}
+        {topicsVisible ? <SectionedThreads roots={sortByActivity ? byLatestActivity(roots) : roots} sections={threadSections} renderThread={renderThread} navigate={navigate} dropSectionId={reorderDrag.target?.position === "section" ? reorderDrag.target.sectionId ?? "" : undefined} /> : null}
       </div>
       {reorderDrag.drag ? createPortal(<div {...portalScope} ref={reorderDrag.ghostRef} className="conversation-drag-ghost rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md" aria-hidden="true"><div className="truncate">{reorderDrag.drag.title}</div><div className="text-[10px] text-muted-foreground">{reorderDrag.target ? reorderDrag.target.botRow ? "Make top conversation" : reorderDrag.target.position === "section" ? "Move to section" : reorderDrag.target.position === "inside" ? "Nest conversation" : "Reorder conversation" : "Drag above/below a sibling · Shift to nest"}</div></div>, document.body) : null}
     </section>
@@ -578,11 +581,17 @@ function ProgressBar({ progress }: { progress: SectionCounts }) {
   const part = (n: number) => ({ width: `${(n / progress.total) * 100}%` });
   return <div title={progressTitle(progress)} className="mx-1 mb-0.5 flex h-0.5 overflow-hidden rounded-full bg-muted"><div className="bg-green-500" style={part(progress.done)} /><div className="bg-yellow-500" style={part(progress.inReview)} /><div className="bg-blue-500" style={part(progress.inProgress)} /></div>;
 }
-function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { roots: PluginSidebarThread[]; sections: readonly PluginSidebarSection[]; renderThread: (thread: PluginSidebarThread) => ReactElement; dropSectionId?: string }) {
+function pinKeeper(threads: PluginSidebarThread[], keeperId: string | null | undefined) {
+  const keeper = keeperId ? threads.find((thread) => thread.id === keeperId) : undefined;
+  return keeper ? [keeper, ...threads.filter((thread) => thread !== keeper)] : threads;
+}
+function SectionedThreads({ roots, sections, renderThread, navigate, dropSectionId }: { navigate: BbNavigate; roots: PluginSidebarThread[]; sections: readonly PluginSidebarSection[]; renderThread: (thread: PluginSidebarThread) => ReactElement; dropSectionId?: string }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedSections());
   const [renaming, setRenaming] = useState<PluginSidebarSection | null>(null);
   const [linking, setLinking] = useState<PluginSidebarSection | null>(null);
+  const [editingContext, setEditingContext] = useState<PluginSidebarSection | null>(null);
   const { links: notionLinks, progress, setLink, refreshFromNotion } = useSectionNotion(sections.length > 0);
+  const { contexts, save: saveContext } = useSectionContexts(sections.length > 0);
   const sdk = useSdk();
   const progressOf = (id: string) => (notionLinks[id] ? progress[id] : undefined);
   // A refresh only starts the automation; keep spinning until new counts land (or 3 min pass).
@@ -590,7 +599,7 @@ function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { ro
   const refreshing = (id: string) => refreshStartedAt !== null && Date.now() - refreshStartedAt < 180_000 && (progressOf(id)?.updatedAt ?? 0) < refreshStartedAt;
   useEffect(() => { if (refreshStartedAt === null) return; const timer = setTimeout(() => setRefreshStartedAt(null), 180_000); return () => clearTimeout(timer); }, [refreshStartedAt]);
   const runRefresh = () => { setRefreshStartedAt(Date.now()); void refreshFromNotion().then((result) => { if (!result.ok) { setRefreshStartedAt(null); toast.error(result.message); } }, (cause) => { setRefreshStartedAt(null); toast.error(cause instanceof Error ? cause.message : String(cause)); }); };
-  const groups = sections.map((section) => ({ section, threads: roots.filter((thread) => thread.sectionId === section.id) })).filter((group) => group.threads.length > 0);
+  const groups = sections.map((section) => ({ section, threads: pinKeeper(roots.filter((thread) => thread.sectionId === section.id), contexts[section.id]?.keeperThreadId) })).filter((group) => group.threads.length > 0);
   const grouped = new Set(groups.flatMap((group) => group.threads.map((thread) => thread.id)));
   const toggle = (id: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); writeCollapsedSections(next); return next; });
   const [confirming, setConfirming] = useState<{ section: PluginSidebarSection; threads: PluginSidebarThread[]; kind: "archive" | "delete" } | null>(null);
@@ -601,6 +610,8 @@ function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { ro
         <div key={section.id} className={dropSectionId === section.id ? "thread-section-group rounded-md bg-state-hover" : "thread-section-group"} data-section-drop-target={section.id}>
           <RowContextMenu items={[
             { label: "Rename section…", action: () => setRenaming(section) },
+            { label: "Section context…", action: () => setEditingContext(section) },
+            ...(contexts[section.id]?.keeperThreadId ? [{ label: "Open context thread", action: () => navigate.toThread(contexts[section.id]!.keeperThreadId!) }] : []),
             { label: notionLinks[section.id] ? "Change Notion project…" : "Link Notion project…", action: () => setLinking(section) },
             ...(notionLinks[section.id] ? [{ label: "Open Notion project", action: () => { window.open(notionLinks[section.id], "_blank", "noopener"); } }, { label: "Refresh from Notion", action: runRefresh }] : []),
             { label: collapsed.has(section.id) ? "Expand section" : "Collapse section", action: () => toggle(section.id) },
@@ -611,6 +622,7 @@ function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { ro
           <button type="button" className="flex min-w-0 flex-1 items-center gap-1 px-1 pt-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground" aria-expanded={!collapsed.has(section.id)} onClick={() => toggle(section.id)}>
             <span className={collapsed.has(section.id) ? "" : "rotate-90"}><TinyIcon name="chevron" /></span>
             <span className="min-w-0 flex-1 truncate">{section.name}</span>
+            {contexts[section.id]?.text.trim() ? <span title="Has rules context" className="text-[9px] normal-case opacity-70">ctx</span> : null}
             {notionLinks[section.id] ? <span title="Linked to a Notion project" className="text-[9px] normal-case opacity-70">N</span> : null}
             {progressOf(section.id) ? <ProgressLabel progress={progressOf(section.id)!} /> : null}
             <span className="tabular-nums">{threads.length}</span>
@@ -632,6 +644,7 @@ function SectionedThreads({ roots, sections, renderThread, dropSectionId }: { ro
           else await sdk.threadSections.delete({ id: confirming.section.id });
         }} /> : null}
       {linking ? <SectionDialog showName={false} heading={`Notion project for "${linking.name}"`} description="Link the Notion project this section tracks. Leave empty to unlink." notionUrl={notionLinks[linking.id] ?? ""} onSave={async ({ notionUrl }) => { await setLink(linking.id, notionUrl); }} onClose={() => setLinking(null)} /> : null}
+      {editingContext ? <SectionContextDialog heading={`Context for "${editingContext.name}"`} text={contexts[editingContext.id]?.text ?? ""} slackChannel={contexts[editingContext.id]?.slackChannel ?? ""} onSave={(patch) => saveContext(editingContext.id, patch)} onClose={() => setEditingContext(null)} /> : null}
       {renaming ? <RenameConversationDialog title={renaming.name} heading="Rename section" description="Choose the section name shown in the sidebar." onSave={async (name) => { await sdk.threadSections.update({ id: renaming.id, name }); }} onClose={() => setRenaming(null)} /> : null}
     </>
   );
@@ -1009,9 +1022,15 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
         if (!allowsConversationProject(request.projectId, bot, personalProjectId, projects)) {
           throw new Error("Choose no project or an available work project.");
         }
+        let created = request;
+        if (conversation.kind !== "fork" && sectionId) {
+          const text = (await rpc.call("section_context_get").catch((): Record<string, { text: string }> => ({})))[sectionId]?.text;
+          const name = sidebar.sections.find((section) => section.id === sectionId)?.name;
+          if (text?.trim() && name) created = withSectionContext(request, name, text);
+        }
         const { threadId } = conversation.kind === "fork"
           ? await rpc.call("conversation_fork", { botId: bot.id, sourceThreadId: conversation.sourceThreadId!, request })
-          : await rpc.call("conversation_create", { botId: bot.id, request, makeMain: conversation.makeMain });
+          : await rpc.call("conversation_create", { botId: bot.id, request: created, makeMain: conversation.makeMain });
         if (sectionId) await sdk.threads.update({ threadId, sectionId });
         setConversation(null); refresh();
         navigate.toThread(threadId);

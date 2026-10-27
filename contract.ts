@@ -2,6 +2,7 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { AVATAR_EXPRESSION_IDS, AVATAR_MOTION_IDS, AVATAR_SHAPE_IDS } from "./lib/appearance";
 import { newThreadRequestSchema } from "./lib/new-thread-request";
+import { sectionContextPatchSchema, sectionContextsSchema } from "./lib/section-context";
 import { notionLinksSchema, progressRecordSchema } from "./lib/notion-progress";
 import { launchPresetSchema } from "./lib/launch-preset";
 
@@ -100,6 +101,8 @@ export const rpcContract = defineRpcContract({
   section_delete: { input: z.object({ sectionId: id }).strict(), output: z.object({ ok: z.literal(true) }).strict() },
   section_notion_links_get: { input: z.null(), output: notionLinksSchema },
   section_notion_link_set: { input: z.object({ sectionId: id, url: z.string().trim().url().max(2000).nullable() }).strict(), output: z.object({ ok: z.literal(true) }).strict() },
+  section_context_get: { input: z.null(), output: sectionContextsSchema },
+  section_context_set: { input: sectionContextPatchSchema.safeExtend({ sectionId: id }), output: z.object({ ok: z.literal(true) }).strict() },
   notion_progress_get: { input: z.null(), output: progressRecordSchema },
   notion_refresh: { input: z.null(), output: z.object({ ok: z.boolean(), message: z.string() }).strict() },
   visibility_set: { input: z.object({ botId: id, hiddenUntilActivity: z.boolean() }).strict(), output: metadataSchema },

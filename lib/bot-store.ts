@@ -1,5 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import { sectionContextsSchema, type SectionContext } from "./section-context";
 import { notionLinksSchema, notionRefreshConfigSchema, progressRecordSchema, type SectionProgress } from "./notion-progress";
 import { metadataSchema, sectionSchema, type BotMetadata, type BotSection } from "../contract";
 
@@ -150,6 +151,8 @@ export function createBotStore(bb: BbPluginApi) {
     sections(): BotSection[] { return (state<unknown[]>("sections") ?? []).map((value) => sectionSchema.parse(value)).sort((a, b) => a.order - b.order); },
     notionLinks(): Record<string, string> { return notionLinksSchema.parse(state("section_notion_links") ?? {}); },
     saveNotionLinks(links: Record<string, string>) { setState("section_notion_links", notionLinksSchema.parse(links)); },
+    sectionContexts(): Record<string, SectionContext> { return sectionContextsSchema.parse(state("section_contexts") ?? {}); },
+    saveSectionContexts(contexts: Record<string, SectionContext>) { setState("section_contexts", sectionContextsSchema.parse(contexts)); },
     notionProgress(): Record<string, SectionProgress> { return progressRecordSchema.parse(state("notion_progress") ?? {}); },
     saveNotionProgress(progress: Record<string, SectionProgress>) { setState("notion_progress", progressRecordSchema.parse(progress)); },
     notionRefresh(): z.infer<typeof notionRefreshConfigSchema> | null { const value = state("notion_refresh"); return value ? notionRefreshConfigSchema.parse(value) : null; },

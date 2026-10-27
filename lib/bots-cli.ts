@@ -1,5 +1,7 @@
 import type { BbPluginApi, PluginCliContext } from "@get-bb/plugin-sdk";
 import type { BotMetadata } from "../contract";
+import { readFile } from "node:fs/promises";
+import { mergeSectionContext, sectionContextPatchSchema } from "./section-context";
 import { notionRefreshConfigSchema, progressInputSchema } from "./notion-progress";
 import type { BotStore } from "./bot-store";
 import { listBotConversations } from "./bot-conversations";
@@ -8,10 +10,15 @@ import { conversationRoots, orderConversations } from "./conversation-order";
 const USAGE = `bb bots list [--json] [--limit 1-100] [--offset N]
 bb bots message <bot-id-or-exact-name> <message> [--thread <conversation-id>] [--json]
 bb bots notion-links [--json]
+bb bots section-context get <sectionId> [--json]
+bb bots section-context set <sectionId> [--text-file <path>] [--slack <channel>] [--keeper-thread <threadId>]
+bb bots section-context list [--json]
 bb bots notion-progress set '<json>'
 bb bots notion-refresh-automation <automationId> <projectId>
 
 notion-links prints each section's id, name (when resolvable), and linked Notion URL.
+section-context keeps per-section rules (markdown, max 20000 chars, prepended to new conversations in that section), a Slack channel (URL or id), and a keeper thread.
+get prints the text (--json: whole record); set replaces the text from a file and/or sets the Slack channel / keeper thread; list shows id, name, chars, slack, keeper thread.
 notion-progress set takes {"<sectionId>": {done,inReview,inProgress,todo,other,total,mine,others}} or {"<sectionId>": {"error": "..."}}.
 notion-refresh-automation stores the automation the sidebar's "Refresh from Notion" runs.
 
@@ -93,6 +100,7 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, resolveOwner: 
     commands: [
       { name: "list", summary: "List bot IDs, activity, visibility, and owned/joined project names without private state", usage: "bb bots list [--json] [--limit 1-100] [--offset N]" },
       { name: "notion-links", summary: "List section → Notion project links", usage: "bb bots notion-links [--json]" },
+      { name: "section-context", summary: "Get/set per-section rules context", usage: "bb bots section-context get|set|list <sectionId> …" },
       { name: "notion-progress", summary: "Store Notion ticket progress per section", usage: "bb bots notion-progress set <json>" },
       { name: "notion-refresh-automation", summary: "Set the automation run by Refresh from Notion", usage: "bb bots notion-refresh-automation <automationId> <projectId>" },
       { name: "message", summary: "Message a bot's first conversation, or reply to one of its conversations; queues while busy", usage: "bb bots message <bot-id-or-exact-name> <message> [--thread <conversation-id>] [--json]" },
@@ -106,6 +114,37 @@ export function registerBotsCli(bb: BbPluginApi, store: BotStore, resolveOwner: 
           try { for (const section of await bb.sdk.threadSections.list({ signal: ctx.signal })) names.set(section.id, section.name); } catch { /* names are optional */ }
           const links = Object.entries(store.notionLinks()).map(([sectionId, url]) => ({ sectionId, url }));
           return { exitCode: 0, stdout: json ? JSON.stringify(links) : links.map(({ sectionId, url }) => [sectionId, names.has(sectionId) ? printable(names.get(sectionId)!) : "", url].join("\t")).join("\n") || "No Notion links." };
+        }
+        if (argv[0] === "section-context") {
+          const [action, ...rest] = argv.slice(1);
+          const usage = `Usage: bb bots section-context get <sectionId> [--json] | set <sectionId> [--text-file <path>] [--slack <channel>] [--keeper-thread <threadId>] | list [--json]\n${USAGE}`;
+          const json = rest.includes("--json"), args = rest.filter((arg) => arg !== "--json");
+          if (action === "list") {
+            if (args.length) throw new Error(usage);
+            const names = new Map<string, string>();
+            try { for (const section of await bb.sdk.threadSections.list({ signal: ctx.signal })) names.set(section.id, section.name); } catch { /* names are optional */ }
+            const rows = Object.entries(store.sectionContexts()).map(([sectionId, value]) => ({ sectionId, name: names.get(sectionId) ?? "", chars: value.text.length, slackChannel: value.slackChannel, keeperThreadId: value.keeperThreadId }));
+            return { exitCode: 0, stdout: json ? JSON.stringify(rows) : rows.map((row) => [row.sectionId, printable(row.name), row.chars, row.slackChannel ?? "", row.keeperThreadId ?? ""].join("\t")).join("\n") || "No section contexts." };
+          }
+          const sectionId = args[0];
+          if (!sectionId || (action !== "get" && action !== "set")) throw new Error(usage);
+          if (action === "get") {
+            if (args.length !== 1) throw new Error(usage);
+            const value = store.sectionContexts()[sectionId] ?? { text: "", slackChannel: null, keeperThreadId: null, updatedAt: 0 };
+            return { exitCode: 0, stdout: json ? JSON.stringify(value) : value.text };
+          }
+          if (json) throw new Error(usage);
+          const patch: Record<string, string> = {};
+          for (let i = 1; i < args.length; i += 2) {
+            const flag = args[i], value = args[i + 1];
+            if (value === undefined || (flag !== "--text-file" && flag !== "--slack" && flag !== "--keeper-thread")) throw new Error(usage);
+            if (flag === "--text-file") patch.text = await readFile(value, "utf8");
+            else patch[flag === "--slack" ? "slackChannel" : "keeperThreadId"] = value;
+          }
+          if (!Object.keys(patch).length) throw new Error(usage);
+          const all = store.sectionContexts();
+          store.saveSectionContexts({ ...all, [sectionId]: mergeSectionContext(all[sectionId], sectionContextPatchSchema.parse(patch), Date.now()) }); publish();
+          return { exitCode: 0, stdout: "Section context saved." };
         }
         if (argv[0] === "notion-progress") {
           if (argv[1] !== "set" || argv.length !== 3) throw new Error(`Usage: bb bots notion-progress set '<json>'\n${USAGE}`);

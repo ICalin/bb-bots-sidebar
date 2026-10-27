@@ -9,6 +9,7 @@ import { applyState, BotStateConflictError, createPrivateBotState, stateContent 
 import { memoryFacts, mutateStateDocument } from "./lib/state-actions";
 import { createLegacyImporter } from "./lib/migrate-bots";
 import { browseProjectDirectory, createWorkProject } from "./lib/project-creation";
+import { mergeSectionContext } from "./lib/section-context";
 import { registerBotsCli } from "./lib/bots-cli";
 import { registerBotMentions } from "./lib/bot-mentions";
 import { listBotConversations } from "./lib/bot-conversations";
@@ -307,6 +308,10 @@ export default async function plugin(bb: BbPluginApi) {
     section_notion_link_set: ({ sectionId, url }) => serial("notion", async () => {
       const { [sectionId]: _previous, ...rest } = store.notionLinks();
       store.saveNotionLinks(url ? { ...rest, [sectionId]: url } : rest); publish(); return { ok: true } as const;
+    }),
+    section_context_get: () => store.sectionContexts(),
+    section_context_set: ({ sectionId, ...patch }) => serial("section-context", async () => {
+      const all = store.sectionContexts(); store.saveSectionContexts({ ...all, [sectionId]: mergeSectionContext(all[sectionId], patch, Date.now()) }); publish(); return { ok: true } as const;
     }),
     notion_progress_get: () => store.notionProgress(),
     notion_refresh: async () => {
