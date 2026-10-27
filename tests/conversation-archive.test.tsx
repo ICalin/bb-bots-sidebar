@@ -44,7 +44,7 @@ it.each([false, true])("requests native archive without prematurely hiding rows 
   expect(slot.nativeActionCalls).toEqual([{ key: "bb--core/archive", threadId: "root" }]);
   expect(slot.container.querySelector('[data-sidebar-thread-id="root"]')).not.toBeNull();
   expect(onNavigate).not.toHaveBeenCalled(); expect(slot.inspection.navigateCalls).toEqual([]);
-  expect(slot.inspection.rpcCalls.map(call => call.method).filter(method => method !== "workflow_runs")).toEqual(["bots_list"]);
+  expect(slot.inspection.rpcCalls.map(call => call.method).filter(method => method !== "workflow_runs" && method !== "pullRequests")).toEqual(["bots_list"]);
 });
 
 it.each([false, true])("gives each expanded child its own archive action (Chats=%s)", async (personal) => {
@@ -74,5 +74,5 @@ it("archives a main child, never the bot identity or main pointer", async () => 
   fireEvent.click(slot.getByRole("button", { name: "Expand children of Conversation main" }));
   fireEvent.click(slot.getByRole("button", { name: "Archive Conversation main-child" }));
   expect(slot.nativeActionCalls).toEqual([{ key: "bb--core/archive", threadId: "main-child" }]);
-  expect(slot.inspection.rpcCalls.map(call => call.method).filter(method => method !== "workflow_runs")).toEqual(["bots_list"]);
+  expect(slot.inspection.rpcCalls.map(call => call.method).filter(method => method !== "workflow_runs" && method !== "pullRequests")).toEqual(["bots_list"]);
 });

@@ -42,6 +42,7 @@ import { RenameConversationDialog } from "@/components/rename-conversation-dialo
 import { SidebarConversationStatus } from "@/components/sidebar-conversation-status";
 import { BotActivityBadge } from "@/components/bot-activity-badge";
 import { ConversationArchiveButton } from "@/components/conversation-archive-button";
+import { PrBadge } from "@/components/pr-badge";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SectionDialog } from "@/components/section-dialog";
 import type { SectionProgress } from "./lib/notion-progress";
@@ -451,6 +452,7 @@ function ThreadRow({ thread, siblings, childrenByParent, activePath, navigate, a
       <a href={thread.href} {...split.splitProps} onPointerDown={(event) => { split.splitProps.onPointerDown?.(event); reorderDrag.begin(thread, event); }} ref={branch.rowRef} role="link" tabIndex={0} aria-current={activeThreadId === thread.id ? "page" : undefined} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); } }} data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id} aria-keyshortcuts={shortcut?.ariaKeyshortcuts} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-1 pr-1" onClick={(event) => { event.preventDefault(); navigate.toThread(thread.id, { split: event.metaKey || event.ctrlKey }); onNavigate(); }}>
         <SidebarConversationStatus thread={thread} /><span className="min-w-0 flex-1 truncate"><TaskTitle thread={thread} /></span>{shortcut ? <kbd className="shrink-0 rounded bg-muted px-1 text-[9px]">{shortcut.label}</kbd> : null}
       </a>
+      {thread.environment?.isWorktree && thread.environment.id ? <PrBadge environmentId={thread.environment.id} /> : null}
       <ConversationRowActions thread={thread} completed={completed} disabled={!completed && busy} onChange={(value) => completion.onChange(thread, value)} />
     </div>
   </ConversationContextMenu>{childCount ? <ul id={branch.childrenId} className="conversation-children" hidden={!branch.expanded}>{branch.expanded ? <>
