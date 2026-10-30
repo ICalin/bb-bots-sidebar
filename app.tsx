@@ -634,6 +634,7 @@ function pinKeeper(threads: PluginSidebarThread[], keeperId: string | null | und
   const keeper = keeperId ? threads.find((thread) => thread.id === keeperId) : undefined;
   return keeper ? [keeper, ...threads.filter((thread) => thread !== keeper)] : threads;
 }
+const isDebug = (section: { name: string }) => section.name.trim().toLowerCase() === "debug";
 function SectionedThreads({ roots, sections, renderThread, navigate, dropSectionId }: { navigate: BbNavigate; roots: PluginSidebarThread[]; sections: readonly PluginSidebarSection[]; renderThread: (thread: PluginSidebarThread) => ReactElement; dropSectionId?: string }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedSections());
   const [renaming, setRenaming] = useState<PluginSidebarSection | null>(null);
@@ -642,6 +643,7 @@ function SectionedThreads({ roots, sections, renderThread, navigate, dropSection
   const { links: notionLinks, progress, setLink, refreshFromNotion } = useSectionNotion(sections.length > 0);
   const { contexts, save: saveContext } = useSectionContexts(sections.length > 0);
   const sdk = useSdk();
+  const rpc = useRpc<typeof rpcContract>();
   const progressOf = (id: string) => (notionLinks[id] ? progress[id] : undefined);
   // A refresh only starts the automation; keep spinning until new counts land (or 3 min pass).
   const [refreshStartedAt, setRefreshStartedAt] = useState<number | null>(null);
@@ -651,7 +653,7 @@ function SectionedThreads({ roots, sections, renderThread, navigate, dropSection
   const groups = sections.map((section) => ({ section, threads: pinKeeper(roots.filter((thread) => thread.sectionId === section.id), contexts[section.id]?.keeperThreadId) })).filter((group) => group.threads.length > 0);
   const grouped = new Set(groups.flatMap((group) => group.threads.map((thread) => thread.id)));
   const toggle = (id: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); writeCollapsedSections(next); return next; });
-  const [confirming, setConfirming] = useState<{ section: PluginSidebarSection; threads: PluginSidebarThread[]; kind: "archive" | "delete" } | null>(null);
+  const [confirming, setConfirming] = useState<{ section: PluginSidebarSection; threads: PluginSidebarThread[]; kind: "archive" | "delete" | "close" } | null>(null);
   return (
     <>
       <ul data-section-drop-target="" className={dropSectionId === "" ? "min-h-2 rounded-md bg-state-hover" : "min-h-2"}>{roots.filter((thread) => !grouped.has(thread.id)).map(renderThread)}</ul>
@@ -665,7 +667,7 @@ function SectionedThreads({ roots, sections, renderThread, navigate, dropSection
             ...(notionLinks[section.id] ? [{ label: "Open Notion project", action: () => { window.open(notionLinks[section.id], "_blank", "noopener"); } }, { label: "Refresh from Notion", action: runRefresh }] : []),
             { label: collapsed.has(section.id) ? "Expand section" : "Collapse section", action: () => toggle(section.id) },
             { label: `Archive ${threads.length} conversation${threads.length === 1 ? "" : "s"}…`, action: () => setConfirming({ section, threads, kind: "archive" }) },
-            { label: "Delete section…", action: () => setConfirming({ section, threads, kind: "delete" }) },
+            ...(isDebug(section) ? [] : [{ label: "Close project…", action: () => setConfirming({ section, threads, kind: "close" as const }) }, { label: "Delete section…", action: () => setConfirming({ section, threads, kind: "delete" as const }) }]),
           ]}>
           <div className="group/section flex items-center">
           <button type="button" className="flex min-w-0 flex-1 items-center gap-1 px-1 pt-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground" aria-expanded={!collapsed.has(section.id)} onClick={() => toggle(section.id)}>
@@ -684,13 +686,17 @@ function SectionedThreads({ roots, sections, renderThread, navigate, dropSection
         </div>
       ))}
       {confirming ? <ConfirmDialog
-        heading={confirming.kind === "archive" ? `Archive "${confirming.section.name}"?` : `Delete section "${confirming.section.name}"?`}
-        description={confirming.kind === "archive" ? `Archives all ${confirming.threads.length} conversations in this section. You can unarchive them later.` : "The conversations stay; they just leave this section."}
-        confirmLabel={confirming.kind === "archive" ? "Archive all" : "Delete section"}
+        heading={confirming.kind === "archive" ? `Archive "${confirming.section.name}"?` : confirming.kind === "close" ? `Close "${confirming.section.name}"?` : `Delete section "${confirming.section.name}"?`}
+        description={confirming.kind === "archive" ? `Archives all ${confirming.threads.length} conversations in this section. You can unarchive them later.` : confirming.kind === "close" ? `Archives all ${confirming.threads.length} conversations (all bots), deletes its context checks, unlinks Notion and removes the section. Archived conversations can be restored.` : "The conversations stay; they just leave this section."}
+        confirmLabel={confirming.kind === "archive" ? "Archive all" : confirming.kind === "close" ? "Close project" : "Delete section"}
         onClose={() => setConfirming(null)}
         onConfirm={async () => {
           if (confirming.kind === "archive") await Promise.all(confirming.threads.map((thread) => sdk.threads.archive({ threadId: thread.id })));
-          else await sdk.threadSections.delete({ id: confirming.section.id });
+          else if (confirming.kind === "close") {
+            const { archived, automationsDeleted, failures } = await rpc.call("section_close", { sectionId: confirming.section.id });
+            toast.success(`Closed ${confirming.section.name}: ${archived} archived, ${automationsDeleted} checks deleted`);
+            if (failures.length) toast.error(failures.join("\n"));
+          } else await sdk.threadSections.delete({ id: confirming.section.id });
         }} /> : null}
       {linking ? <SectionDialog showName={false} heading={`Notion project for "${linking.name}"`} description="Link the Notion project this section tracks. Leave empty to unlink." notionUrl={notionLinks[linking.id] ?? ""} onSave={async ({ notionUrl }) => { await setLink(linking.id, notionUrl); }} onClose={() => setLinking(null)} /> : null}
       {editingContext ? <SectionContextDialog heading={`Context for "${editingContext.name}"`} text={contexts[editingContext.id]?.text ?? ""} slackChannel={contexts[editingContext.id]?.slackChannel ?? ""} onSave={(patch) => saveContext(editingContext.id, patch)} onClose={() => setEditingContext(null)} /> : null}

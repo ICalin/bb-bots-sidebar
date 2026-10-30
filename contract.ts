@@ -128,6 +128,7 @@ export const rpcContract = defineRpcContract({
   section_create: { input: z.object({ name: z.string().trim().min(1).max(80) }).strict(), output: sectionSchema },
   section_update: { input: z.object({ sectionId: id, name: z.string().trim().min(1).max(80) }).strict(), output: sectionSchema },
   section_delete: { input: z.object({ sectionId: id }).strict(), output: z.object({ ok: z.literal(true) }).strict() },
+  section_close: { input: z.object({ sectionId: id }).strict(), output: z.object({ archived: z.number(), automationsDeleted: z.number(), failures: z.array(z.string()) }).strict() },
   section_notion_links_get: { input: z.null(), output: notionLinksSchema },
   section_notion_link_set: { input: z.object({ sectionId: id, url: z.string().trim().url().max(2000).nullable() }).strict(), output: z.object({ ok: z.literal(true) }).strict() },
   section_context_get: { input: z.null(), output: sectionContextsSchema },

@@ -338,6 +338,44 @@ export default async function plugin(bb: BbPluginApi) {
       store.saveAll(store.list().filter((bot) => bot.sectionId === sectionId).map((bot) => ({ ...bot, sectionId: null, updatedAt: nextTimestamp(bot.updatedAt) })));
       store.saveSections(store.sections().filter((section) => section.id !== sectionId)); publish(); return { ok: true } as const;
     }),
+    section_close: ({ sectionId }) => serial("registry", async () => {
+      const section = (await bb.sdk.threadSections.list()).find((entry) => entry.id === sectionId);
+      if (!section) throw new Error("Section no longer exists");
+      if (section.name.trim().toLowerCase() === "debug") throw new Error("Debug can't be closed.");
+      const failures: string[] = []; const cli = process.env.BB_CLI || "bb";
+      const keeperThreadId = store.sectionContexts()[sectionId]?.keeperThreadId ?? null;
+      const ids = new Set<string>(keeperThreadId ? [keeperThreadId] : []);
+      for (let offset = 0; ; offset += 100) {
+        const page = await bb.sdk.threads.list({ archived: false, includeHidden: true, offset, limit: 100 });
+        for (const thread of page) if (thread.sectionId === sectionId) ids.add(thread.id);
+        if (page.length < 100) break;
+      }
+      let archived = 0;
+      for (const threadId of ids) {
+        try { await bb.sdk.threads.archive({ threadId }); archived++; }
+        catch (error) { failures.push(`Archive ${threadId}: ${error instanceof Error ? error.message : String(error)}`); }
+      }
+      let automationsDeleted = 0;
+      if (keeperThreadId) {
+        try {
+          const projects: { id: string }[] = JSON.parse((await execFileAsync(cli, ["project", "list", "--include-personal", "--json"], { timeout: 60_000 })).stdout);
+          for (const project of projects) {
+            try {
+              const automations: { id: string; execution?: { targetThreadId?: string | null } }[] = JSON.parse((await execFileAsync(cli, ["automation", "list", "--project", project.id, "--json"], { timeout: 60_000 })).stdout);
+              for (const automation of automations.filter((entry) => entry.execution?.targetThreadId === keeperThreadId)) {
+                try { await execFileAsync(cli, ["automation", "delete", automation.id, "--project", project.id, "--yes"], { timeout: 60_000 }); automationsDeleted++; }
+                catch (error) { failures.push(`Delete check ${automation.id}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`); }
+              }
+            } catch (error) { failures.push(`List checks in ${project.id}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`); }
+          }
+        } catch (error) { failures.push(`List projects: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`); }
+      }
+      await serial("notion", async () => { const { [sectionId]: _link, ...links } = store.notionLinks(); store.saveNotionLinks(links); const { [sectionId]: _progress, ...progress } = store.notionProgress(); store.saveNotionProgress(progress); });
+      await serial("section-context", async () => { const { [sectionId]: _context, ...contexts } = store.sectionContexts(); store.saveSectionContexts(contexts); });
+      try { await bb.sdk.threadSections.delete({ id: sectionId }); }
+      catch (error) { failures.push(`Delete section: ${error instanceof Error ? error.message : String(error)}`); }
+      publish(); return { archived, automationsDeleted, failures };
+    }),
     section_notion_links_get: () => store.notionLinks(),
     section_notion_link_set: ({ sectionId, url }) => serial("notion", async () => {
       const { [sectionId]: _previous, ...rest } = store.notionLinks();
