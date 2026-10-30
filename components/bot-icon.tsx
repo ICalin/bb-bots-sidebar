@@ -148,6 +148,12 @@ export function BotIcon({
   selected?: boolean;
 }) {
   const id = useId().replaceAll(":", "");
+  if (avatar.image) {
+    return <svg className={`bot-avatar bot-motion-${avatar.motion} ${working ? "bot-state-working" : `bot-state-idle bot-idle-${idleVariant % 3}`}`} width={size} height={size} viewBox="0 0 100 100" role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true} data-color={avatar.color} data-motion={avatar.motion}>
+      <circle className="bot-work-ring" cx="50" cy="50" r="47" fill="none" stroke={avatar.color} strokeWidth="2.5" />
+      <image href={avatar.image} x="10" y="10" width="80" height="80" preserveAspectRatio="xMidYMid meet" />
+    </svg>;
+  }
   const path = shapePath(avatar.shape);
   const fit = eyeFitTransform(avatar.shape);
   const eyes = fit

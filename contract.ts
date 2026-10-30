@@ -14,6 +14,8 @@ export const avatarSchema = z.object({
   shape: z.enum(AVATAR_SHAPE_IDS),
   expression: z.enum(AVATAR_EXPRESSION_IDS),
   motion: z.enum(AVATAR_MOTION_IDS),
+  // Optional picture (data: URL or https) shown instead of the drawn shape.
+  image: z.string().max(20000).regex(/^(data:image\/(svg\+xml|png|jpeg|webp)[;,]|https:\/\/)/).optional(),
 }).strict();
 export type BotAvatar = z.infer<typeof avatarSchema>;
 export const stateFileSchema = z.enum(["SOUL.md", "MEMORY.md", "settings.json"]);

@@ -80,6 +80,7 @@ export type BotAvatar = {
   shape: AvatarShape;
   expression: AvatarExpression;
   motion: AvatarMotion;
+  image?: string;
 };
 
 const ROUND_PATH = "M50 4A46 46 0 1 1 49.99 4Z";
