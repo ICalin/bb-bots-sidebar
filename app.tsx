@@ -1113,7 +1113,7 @@ function BotsSidebar({ activeThreadId, onNavigate }: PluginThreadListProps) {
         if (conversation.kind !== "fork" && sectionId) {
           const text = (await rpc.call("section_context_get").catch((): Record<string, { text: string }> => ({})))[sectionId]?.text;
           const name = sidebar.sections.find((section) => section.id === sectionId)?.name;
-          if (text?.trim() && name) created = withSectionContext(request, name, text);
+          if (text?.trim() && name) created = withSectionContext(request, name, text, sectionId);
         }
         const { threadId } = conversation.kind === "fork"
           ? await rpc.call("conversation_fork", { botId: bot.id, sourceThreadId: conversation.sourceThreadId!, request })

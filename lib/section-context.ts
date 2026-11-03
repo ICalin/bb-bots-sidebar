@@ -19,9 +19,9 @@ export function mergeSectionContext(previous: SectionContext | undefined, patch:
 }
 
 /** Prepends the section's rules to the first text part of a new conversation (shifting mention offsets). */
-export function withSectionContext(request: NewThreadRequest, sectionName: string, text: string): NewThreadRequest {
+export function withSectionContext(request: NewThreadRequest, sectionName: string, text: string, sectionId: string): NewThreadRequest {
   if (!text.trim()) return request;
-  const prefix = `<section-context name="${sectionName.replace(/"/g, "&quot;")}">\n${text}\n</section-context>\nFollow these rules. If the task touches an item under "Open questions", ask me before assuming.\n\n`;
+  const prefix = `<section-context name="${sectionName.replace(/"/g, "&quot;")}" id="${sectionId}">\n${text}\n</section-context>\nFollow these rules. If the task touches an item under "Open questions", ask me before assuming.\n\n`;
   const index = request.input.findIndex((part) => part.type === "text");
   if (index < 0) return { ...request, input: [{ type: "text", text: prefix, mentions: [] }, ...request.input] };
   const input = request.input.map((part, i) => i === index && part.type === "text"
