@@ -9,15 +9,16 @@ const resource = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("project"), label: z.string(), projectId: id }).strict(),
   z.object({ kind: z.literal("section"), label: z.string(), sectionId: id }).strict(),
   z.object({ kind: z.literal("path"), label: z.string(), path: z.string(), entryKind: z.enum(["file", "directory"]), source: z.enum(["workspace", "thread-storage"]) }).strict(),
-  z.object({ kind: z.literal("command"), label: z.string(), name: z.string(), argumentHint: z.string().nullable(), origin: z.enum(["builtin", "project", "user"]), source: z.enum(["command", "skill"]), trigger: z.literal("/") }).strict(),
+  z.object({ kind: z.literal("command"), label: z.string(), name: z.string(), argumentHint: z.string().nullable(), origin: z.enum(["builtin", "project", "user"]), source: z.enum(["command", "skill"]), trigger: z.enum(["/", "$"]) }).strict(),
   z.object({ kind: z.literal("plugin"), label: z.string(), pluginId: id, itemId: id, icon: z.string().nullable().optional() }).strict(),
+  z.object({ kind: z.literal("attachment"), label: z.string(), path: z.string() }).strict(),
 ]);
 const visibility = z.literal("agent-only").optional();
 const input = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string(), mentions: z.array(z.object({ start: z.number().int().nonnegative(), end: z.number().int().nonnegative(), resource }).strict()), visibility }).strict(),
   z.object({ type: z.literal("image"), url: z.string(), visibility }).strict(),
-  z.object({ type: z.literal("localImage"), path: z.string(), visibility }).strict(),
-  z.object({ type: z.literal("localFile"), path: z.string(), mimeType: z.string().optional(), name: z.string().optional(), sizeBytes: z.number().nonnegative().optional(), visibility }).strict(),
+  z.object({ type: z.literal("localImage"), path: z.string(), hostId: id.optional(), sourceProjectId: id.optional(), visibility }).strict(),
+  z.object({ type: z.literal("localFile"), path: z.string(), mimeType: z.string().optional(), name: z.string().optional(), sizeBytes: z.number().nonnegative().optional(), hostId: id.optional(), sourceProjectId: id.optional(), visibility }).strict(),
 ]);
 const environment = z.discriminatedUnion("type", [
   // Native composers also use environment providers for existing remote
