@@ -47,7 +47,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SectionDialog } from "@/components/section-dialog";
 import type { SectionProgress } from "./lib/notion-progress";
 import { SectionContextDialog } from "@/components/section-context-dialog";
-import { useSectionContexts } from "./lib/use-section-contexts";
+import { useSectionContexts, useSectionContextViewer } from "./lib/use-section-contexts";
 import { withSectionContext } from "./lib/section-context";
 import { useSectionNotion, useSetSectionNotionLink } from "./lib/section-notion-links";
 import { ConversationRowActions } from "@/components/conversation-row-actions";
@@ -349,19 +349,21 @@ function ConversationContextMenu({ children, thread, items = [], dragging }: {
   const [renaming, setRenaming] = useState(false);
   const setNotionLink = useSetSectionNotionLink();
   const [creatingSection, setCreatingSection] = useState(false);
+  const sectionContext = useSectionContextViewer();
   const sdk = useSdk();
   return <>
     <ThreadActionsContextMenu
       thread={threadActionTarget(thread)}
       dragging={dragging}
       requestRename={() => setRenaming(true)}
-      inline={[...items, { label: "New section…", action: () => setCreatingSection(true) }].map((item) => ({
+      inline={[...items, ...(thread.sectionId ? [{ label: "Section context…", action: () => { void sectionContext.view(thread.sectionId!); } }] : []), { label: "New section…", action: () => setCreatingSection(true) }].map((item) => ({
         key: item.label,
         group: "00-bots",
         action: { label: item.label, icon: "MessageCircle", disabled: item.disabled, run: item.action },
       }))}
     >{children}</ThreadActionsContextMenu>
     {renaming ? <RenameConversationDialog title={thread.title ?? thread.titleFallback ?? "Untitled conversation"} onSave={async (title) => { await sdk.threads.update({ threadId: thread.id, title }); }} onClose={() => setRenaming(false)} /> : null}
+    {sectionContext.open ? <SectionContextDialog heading="Section context" text={sectionContext.open.context?.text ?? ""} slackChannel={sectionContext.open.context?.slackChannel ?? ""} onSave={(patch) => sectionContext.save(sectionContext.open!.sectionId, patch)} onClose={sectionContext.close} /> : null}
     {creatingSection ? <SectionDialog heading="New section" description="Create a section and move this conversation into it." onSave={async ({ name, notionUrl }) => { const section = await sdk.threadSections.create({ name }); if (notionUrl) await setNotionLink(section.id, notionUrl); await sdk.threads.update({ threadId: thread.id, sectionId: section.id }); }} onClose={() => setCreatingSection(false)} /> : null}
   </>;
 }
